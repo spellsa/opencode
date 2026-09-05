@@ -55,8 +55,10 @@
 
 ### 3.3 名前
 
-- 自動採番。チームごとに `Agent-1`, `Agent-2`, ...(spawn順)
-- 中立的な名前とする(タスク領域の名前はLLMの動作を錨づけするため避ける)
+- 名前は **`<teamID>-<採番>`**。チームごとのspawn順で採番する(例: チーム`survey`の1体目→`survey-1`)
+- **teamIDはkebab-case**(小文字英数字とハイフン)。spawn時にバリデーションし、不正はエラーで拒否する(§5.3.2)
+- teamIDが一意なので、チーム内採番のままでBoss配下全体の名前が一意になる(宛先の曖昧さが構造的に発生しない)
+- 名前はラベルであり、タスク領域の意味は持たせない
 - チーム内でユニーク。宛先の名前解決はランタイムが名簿で行う(ツールパラメータはセッションIDを受け付けない)
 
 ### 3.4 完了概念
@@ -158,10 +160,8 @@ launched and end your response.
 |---|---|---|
 | `agent` | 既存流用: `The type of specialized agent to use for this task` | このタスクに使う専門エージェントの種類 |
 | `description` | 既存流用: `A short 3-5 word label for the task, displayed to the user` | タスクの短いラベル(3〜5語)。ユーザーに表示される |
-| `prompt` | 既存流用: `The task for the subagent to perform` | サブエージェントに実行させるタスク |
-| `team`(新設) | 確定(案C): `Spawn this subagent into a team identified by this id. Team members share a roster and can message each other with message_to_peer; the first spawn becomes the team's leader and the only member that can message you. Use this when several subagents need to coordinate instead of reporting back independently.` | このIDで識別されるチームにサブエージェントをspawnします。チームメンバーは名簿を共有し、message_to_peerで相互通信できます。最初のspawnがleaderとなり、あなた(Boss)にメッセージを送れる唯一のメンバーになります。複数のサブエージェントに個別報告ではなく協調させたいときに使ってください |
-| `prompt`(optional化) | ドラフト: `The task for the subagent to perform. Required for plain spawns; must be omitted for team spawns (the leader assigns work via message_to_peer).` | サブエージェントに実行させるタスク。単発spawnでは必須。チームspawnでは指定しない(仕事はleaderがmessage_to_peerで割り当てる) |
-
+| `prompt` | 変更: `The task for the subagent to perform. Required for plain spawns; must be omitted for team spawns (the leader assigns work via message_to_peer).` | サブエージェントに実行させるタスク。単発spawnでは必須。チームspawnでは指定しない(仕事はleaderがmessage_to_peerで割り当てる) |
+| `team`(新設) | 確定(案C): `Spawn this subagent into a team identified by this id. Team members share a roster and can message each other with message_to_peer; the first spawn becomes the team's leader and the only member that can message you. Use this when several subagents need to coordinate instead of reporting back independently. Team ids must be kebab-case.` | このIDで識別されるチームにサブエージェントをspawnします。チームメンバーは名簿を共有し、message_to_peerで相互通信できます。最初のspawnがleaderとなり、あなた(Boss)にメッセージを送れる唯一のメンバーになります。複数のサブエージェントに個別報告ではなく協調させたいときに使ってください。チームIDはkebab-caseで指定してください |
 ### 5.3.1 team+prompt誤用のエラー文面
 
 ```
@@ -177,6 +177,24 @@ for team spawns.
 leaderがmessage_to_peerでメンバーに仕事を割り当てます。チームspawnでは
 "prompt"を省略してください。
 ```
+
+### 5.3.2 チームID不正のエラー文面
+
+**原文(確定):**
+
+```
+Invalid team id "<teamID>": team ids must be kebab-case
+(lowercase letters, digits, and hyphens).
+```
+
+**日本語訳(参考):**
+
+```
+無効なチームID "<teamID>":チームIDはkebab-case(小文字英数字とハイフン)で
+指定してください。
+```
+
+- kebab-caseの説明は通常のパラメータ説明文には含めず、エラー時にのみ展開する(kebab-case自体はLLMにとって確実な定番語であり、解釈の揺れはエラー+リトライで自己修正される)
 
 ### 5.3 taskツールの戻り値
 
@@ -239,7 +257,7 @@ is available.
 
 | パラメータ | 原文(ドラフト) | 日本語訳 |
 |---|---|---|
-| `to` | `Recipient name from your current team roster (for example "Agent-1" or "Boss").` | 現行のチーム名簿に載っている受信者名(例: "Agent-1" または "Boss") |
+| `to` | `Recipient name from your current team roster (for example "test-1" or "Boss").` | 現行のチーム名簿に載っている受信者名(例: "test-1" または "Boss") |
 | `text` | `The message to send.` | 送信するメッセージ本文 |
 
 ### 5.5 message_to_peerの出力・エラー文
@@ -254,8 +272,8 @@ Message sent to <name>.
 
 ```
 No roster entry named "<to>". Current roster:
-- Agent-1 (leader) — the only member who can message Boss
-- Agent-2 (member)
+- test-1 (leader) — the only member who can message Boss
+- test-2 (member)
 ...
 ```
 
@@ -263,8 +281,8 @@ No roster entry named "<to>". Current roster:
 
 ```
 "<to>"という名前の名簿エントリはありません。現行の名簿:
-- Agent-1 (leader) — Bossにメッセージを送れる唯一のメンバー
-- Agent-2 (member)
+- test-1 (leader) — Bossにメッセージを送れる唯一のメンバー
+- test-2 (member)
 ...
 ```
 
@@ -290,9 +308,9 @@ member/leaderが呼んだ場合(自分のチーム1件)。呼び出し者自身�
 
 ```
 Team <teamID>:
-- Agent-1 (leader) — the only member who can message Boss — you
-- Agent-2 (member)
-- Agent-3 (member)
+- test-1 (leader) — the only member who can message Boss — you
+- test-2 (member)
+- test-3 (member)
 ```
 
 leaderが呼んだ場合(上記に追加):
@@ -305,20 +323,20 @@ Bossが呼んだ場合(**全チームをグループ化して返す**。§5.6複
 
 ```
 Team <teamID-1>:
-- Agent-1 (leader)
-- Agent-2 (member)
+- test-1 (leader)
+- test-2 (member)
 Team <teamID-2>:
-- Agent-4 (leader)
-- Agent-5 (member)
+- survey-1 (leader)
+- survey-2 (member)
 ```
 
 **日本語訳(参考):**
 
 ```
 チーム<teamID>:
-- Agent-1 (leader) — Bossにメッセージを送れる唯一のメンバー — あなた
-- Agent-2 (member)
-- Agent-3 (member)
+- test-1 (leader) — Bossにメッセージを送れる唯一のメンバー — あなた
+- test-2 (member)
+- test-3 (member)
 ```
 
 ```
@@ -328,7 +346,7 @@ Team <teamID-2>:
 ### 5.7 受信メッセージの形式(inboxに投入される合成メッセージ)
 
 ```
-From Agent-2 (member):
+From test-2 (member):
 <本文>
 ```
 

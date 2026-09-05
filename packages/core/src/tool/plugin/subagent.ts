@@ -32,7 +32,7 @@ export const Input = Schema.Struct({
   }),
   team: Schema.optionalKey(Schema.String).annotate({
     description:
-      "Spawn this subagent into a team identified by this id. Team members share a roster and can message each other with message_to_peer; the first spawn becomes the team's leader and the only member that can message you. Use this when several subagents need to coordinate instead of reporting back independently.",
+      "Spawn this subagent into a team identified by this id. Team members share a roster and can message each other with message_to_peer; the first spawn becomes the team's leader and the only member that can message you. Use this when several subagents need to coordinate instead of reporting back independently. Team ids must be kebab-case.",
   }),
 })
 
@@ -144,6 +144,10 @@ export const Plugin = {
                 })
               if (!teamID && input.prompt === undefined)
                 return yield* new ToolFailure({ message: "The \"prompt\" parameter is required for plain spawns." })
+              if (teamID && !/^[a-z0-9]+(-[a-z0-9]+)*$/.test(teamID))
+                return yield* new ToolFailure({
+                  message: `Invalid team id "${teamID}": team ids must be kebab-case (lowercase letters, digits, and hyphens).`,
+                })
 
               const model = agent.model ?? parent.model
               const child = yield* sessions

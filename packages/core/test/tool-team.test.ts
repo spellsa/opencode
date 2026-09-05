@@ -109,18 +109,18 @@ describe("TeamTool", () => {
               call: { type: "tool-call" as const, id, name: "message_to_peer", input },
             })
 
-          const toMember = yield* call(leader.id, "call-leader-to-member", { to: "Agent-2", text: "status?" })
+          const toMember = yield* call(leader.id, "call-leader-to-member", { to: "survey-2", text: "status?" })
           expect(toMember.status).toBe("completed")
-          expect(text(toMember)).toContain("Message sent to Agent-2.")
-          expect(yield* inboxTexts(sessions, member.id)).toEqual(["From Agent-1 (leader):\nstatus?"])
+          expect(text(toMember)).toContain("Message sent to survey-2.")
+          expect(yield* inboxTexts(sessions, member.id)).toEqual(["From survey-1 (leader):\nstatus?"])
 
-          const toLeader = yield* call(member.id, "call-member-to-leader", { to: "Agent-1", text: "done" })
+          const toLeader = yield* call(member.id, "call-member-to-leader", { to: "survey-1", text: "done" })
           expect(toLeader.status).toBe("completed")
-          expect(yield* inboxTexts(sessions, leader.id)).toEqual(["From Agent-2 (member):\ndone"])
+          expect(yield* inboxTexts(sessions, leader.id)).toEqual(["From survey-2 (member):\ndone"])
 
           const toBoss = yield* call(leader.id, "call-leader-to-boss", { to: "Boss", text: "report" })
           expect(toBoss.status).toBe("completed")
-          expect(yield* inboxTexts(sessions, parent.id)).toEqual(["From Agent-1 (leader):\nreport"])
+          expect(yield* inboxTexts(sessions, parent.id)).toEqual(["From survey-1 (leader):\nreport"])
 
           const memberToBoss = yield* call(member.id, "call-member-to-boss", { to: "Boss", text: "hi" })
           expect(memberToBoss).toEqual({
@@ -128,10 +128,10 @@ describe("TeamTool", () => {
             error: { type: "tool.execution", message: expect.stringContaining('No roster entry named "Boss"') },
           })
 
-          const fromBoss = yield* call(parent.id, "call-boss-to-member", { to: "Agent-2", text: "keep going" })
+          const fromBoss = yield* call(parent.id, "call-boss-to-member", { to: "survey-2", text: "keep going" })
           expect(fromBoss.status).toBe("completed")
           expect(yield* inboxTexts(sessions, member.id)).toEqual([
-            "From Agent-1 (leader):\nstatus?",
+            "From survey-1 (leader):\nstatus?",
             "From Boss:\nkeep going",
           ])
 
@@ -140,7 +140,7 @@ describe("TeamTool", () => {
             status: "error",
             error: { type: "tool.execution", message: expect.stringContaining('No roster entry named "Nobody"') },
           })
-          expect(unknown.error?.message).toContain("- Agent-2 (member)")
+          expect(unknown.error?.message).toContain("- survey-2 (member)")
         }),
       ),
     ),
@@ -176,20 +176,20 @@ describe("TeamTool", () => {
           const memberRoster = yield* roster(member.id, "call-member-roster")
           const memberLines = text(memberRoster)
           expect(memberLines).toContain("Team survey:")
-          expect(memberLines).toContain("- Agent-1 (leader) — the only member who can message Boss")
-          expect(memberLines).toContain("- Agent-2 (member) — you")
+          expect(memberLines).toContain("- survey-1 (leader) — the only member who can message Boss")
+          expect(memberLines).toContain("- survey-2 (member) — you")
           expect(memberLines).not.toContain("your manager")
 
           const leaderRoster = yield* roster(leader.id, "call-leader-roster")
           const leaderLines = text(leaderRoster)
-          expect(leaderLines).toContain("- Agent-1 (leader) — the only member who can message Boss — you")
+          expect(leaderLines).toContain("- survey-1 (leader) — the only member who can message Boss — you")
           expect(leaderLines).toContain("- Boss — your manager; only you (the leader) can message it")
 
           const bossRoster = yield* roster(parent.id, "call-boss-roster")
           const bossLines = text(bossRoster)
           expect(bossLines).toContain("Team survey:")
-          expect(bossLines).toContain("- Agent-1 (leader)")
-          expect(bossLines).toContain("- Agent-2 (member)")
+          expect(bossLines).toContain("- survey-1 (leader)")
+          expect(bossLines).toContain("- survey-2 (member)")
           expect(bossLines).not.toContain("— you")
 
           const outsiderRoster = yield* roster(outsider.id, "call-outsider-roster")

@@ -82,9 +82,10 @@ const layer = Layer.effect(
           const rows = yield* db
             .select()
             .from(SessionTeamTable)
-            .where(and(eq(SessionTeamTable.parent_id, input.parentID), eq(SessionTeamTable.team_id, input.teamID)))
+            .where(eq(SessionTeamTable.parent_id, input.parentID))
             .pipe(Effect.orDie)
-          const position = rows.length
+          const siblings = rows.filter((row) => row.team_id === input.teamID)
+          const position = siblings.length
           return yield* db
             .insert(SessionTeamTable)
             .values({
@@ -92,7 +93,7 @@ const layer = Layer.effect(
               parent_id: input.parentID,
               team_id: input.teamID,
               session_id: input.sessionID,
-              name: `Agent-${position + 1}`,
+              name: `${input.teamID}-${rows.length + 1}`,
               role: position === 0 ? "leader" : "member",
               position,
               time_created: Date.now(),

@@ -16,7 +16,7 @@ type Entry = {
 
 function label(session: SessionInfo) {
   const base = withTimestampedFallback(session)
-  if (/^Agent-\d+ \((leader|member)\)/.test(base)) return base
+  if (/^[\w-]+-\d+ \((leader|member)\)/.test(base)) return base
   const match = base.match(/@(\w+) subagent/)
   const agent = session.agent ? Locale.titlecase(session.agent) : match ? Locale.titlecase(match[1]) : undefined
   const name = match ? base.replace(match[0], "").trim() || base : base

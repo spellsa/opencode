@@ -478,22 +478,22 @@ describe("SubagentTool", () => {
           expect(leader.content).toEqual([
             {
               type: "text",
-              text: expect.stringContaining("Spawned Agent-1 (leader) in team survey"),
+              text: expect.stringContaining("Spawned survey-1 (leader) in team survey"),
             },
           ])
           expect(leader.content).toEqual([
             { type: "text", text: expect.stringContaining("Wake the leader with message_to_peer") },
           ])
-          expect(member.content).toEqual([{ type: "text", text: expect.stringContaining("Spawned Agent-2 (member)") }])
+          expect(member.content).toEqual([{ type: "text", text: expect.stringContaining("Spawned survey-2 (member)") }])
           expect(yield* sessions.get(leaderID)).toMatchObject({
             parentID: parent.id,
-            title: "Agent-1 (leader) — lead survey",
+            title: "survey-1 (leader) — lead survey",
           })
-          expect(yield* sessions.get(memberID)).toMatchObject({ title: "Agent-2 (member) — price research" })
+          expect(yield* sessions.get(memberID)).toMatchObject({ title: "survey-2 (member) — price research" })
           const leaderMembership = yield* team.membership(leaderID)
           const memberMembership = yield* team.membership(memberID)
-          expect(leaderMembership).toMatchObject({ name: "Agent-1", role: "leader", teamID: "survey" })
-          expect(memberMembership).toMatchObject({ name: "Agent-2", role: "member", teamID: "survey" })
+          expect(leaderMembership).toMatchObject({ name: "survey-1", role: "leader", teamID: "survey" })
+          expect(memberMembership).toMatchObject({ name: "survey-2", role: "member", teamID: "survey" })
           expect((yield* sessions.inbox(leaderID)).filter((message) => message.type === "user")).toHaveLength(0)
           expect((yield* sessions.inbox(memberID)).filter((message) => message.type === "user")).toHaveLength(0)
         }),
@@ -529,6 +529,24 @@ describe("SubagentTool", () => {
           ).toEqual({
             status: "error",
             error: { type: "tool.execution", message: expect.stringContaining("Team spawns start dormant") },
+          })
+          expect(
+            yield* executeTool(registry, {
+              sessionID: parent.id,
+              ...toolIdentity,
+              call: {
+                type: "tool-call",
+                id: "call-team-invalid-id",
+                name: SubagentTool.name,
+                input: { agent: "reviewer", description: "lead", team: "My Team" },
+              },
+            }),
+          ).toEqual({
+            status: "error",
+            error: {
+              type: "tool.execution",
+              message: 'Invalid team id "My Team": team ids must be kebab-case (lowercase letters, digits, and hyphens).',
+            },
           })
           expect(
             yield* executeTool(registry, {
