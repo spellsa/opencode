@@ -174,3 +174,29 @@ export const InstructionStateTable = sqliteTable("instruction_state", {
   initial_values: text({ mode: "json" }).notNull().$type<Instruction.Values>(),
   current_values: text({ mode: "json" }).notNull().$type<Instruction.Values>(),
 })
+
+export const SessionTeamTable = sqliteTable(
+  "session_team_member",
+  {
+    id: text().primaryKey(),
+    parent_id: text()
+      .$type<SessionSchema.ID>()
+      .notNull()
+      .references(() => SessionTable.id, { onDelete: "cascade" }),
+    team_id: text().notNull(),
+    session_id: text()
+      .$type<SessionSchema.ID>()
+      .notNull()
+      .references(() => SessionTable.id, { onDelete: "cascade" }),
+    name: text().notNull(),
+    role: text().$type<"leader" | "member">().notNull(),
+    position: integer().notNull(),
+    time_created: integer()
+      .notNull()
+      .$default(() => Date.now()),
+  },
+  (table) => [
+    index("session_team_member_parent_team_idx").on(table.parent_id, table.team_id),
+    uniqueIndex("session_team_member_session_idx").on(table.session_id),
+  ],
+)
