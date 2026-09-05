@@ -12,6 +12,8 @@ if (-not $Windows -and -not $Docker) {
 }
 
 $root = Split-Path -Parent $PSScriptRoot
+$pluginSource = Join-Path $root "plugins/temp-policy"
+$pluginFiles = @("index.ts", "server.ts", "package.json")
 
 function Invoke-Checked {
   param(
@@ -39,6 +41,11 @@ try {
     $destination = Join-Path $directory "opencode2.exe"
     New-Item -ItemType Directory -Force -Path $directory | Out-Null
     Copy-Item -Force $source $destination
+    $pluginDestination = Join-Path $HOME ".config/opencode/plugins/temp-policy"
+    New-Item -ItemType Directory -Force -Path $pluginDestination | Out-Null
+    foreach ($file in $pluginFiles) {
+      Copy-Item -Force (Join-Path $pluginSource $file) (Join-Path $pluginDestination $file)
+    }
     Invoke-Checked -Description "Windows installation verification" -Command { & $destination --version }
   }
 
@@ -54,6 +61,20 @@ try {
     }
     Invoke-Checked -Description "Docker executable permission" -Command {
       docker exec -u 0 $Container chmod 755 /usr/local/bin/opencode2
+    }
+    Invoke-Checked -Description "Docker command link" -Command {
+      docker exec -u 0 $Container sh -lc "mkdir -p /home/ubuntu/.opencode/bin && ln -sf /usr/local/bin/opencode2 /home/ubuntu/.opencode/bin/opencode2 && chown -h ubuntu:ubuntu /home/ubuntu/.opencode/bin/opencode2"
+    }
+    Invoke-Checked -Description "Docker plugin directory" -Command {
+      docker exec -u 0 $Container mkdir -p /home/ubuntu/.config/opencode/plugins/temp-policy
+    }
+    foreach ($file in $pluginFiles) {
+      Invoke-Checked -Description "Docker plugin copy ($file)" -Command {
+        docker cp (Join-Path $pluginSource $file) "${Container}:/home/ubuntu/.config/opencode/plugins/temp-policy/$file"
+      }
+    }
+    Invoke-Checked -Description "Docker plugin ownership" -Command {
+      docker exec -u 0 $Container chown -R ubuntu:ubuntu /home/ubuntu/.config/opencode/plugins/temp-policy
     }
     Invoke-Checked -Description "Docker installation verification" -Command {
       docker exec $Container /usr/local/bin/opencode2 --version
