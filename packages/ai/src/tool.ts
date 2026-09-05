@@ -232,8 +232,25 @@ export const toDefinitions = (tools: Tools): ReadonlyArray<ToolDefinitionClass> 
 
 const toJsonSchema = (schema: Schema.Top): JsonSchema.JsonSchema => {
   const document = Schema.toJsonSchemaDocument(schema)
-  if (Object.keys(document.definitions).length === 0) return document.schema
-  return { ...document.schema, $defs: document.definitions }
+  const raw =
+    Object.keys(document.definitions).length === 0 ? document.schema : { ...document.schema, $defs: document.definitions }
+  if (isEmptyStructSchema(raw)) return { type: "object", properties: {}, additionalProperties: false }
+  return raw
+}
+
+const isRecord = (value: unknown): value is Record<string, any> =>
+  typeof value === "object" && value !== null && !Array.isArray(value)
+
+const isEmptyStructSchema = (value: unknown): boolean => {
+  // `Schema.Struct({})` emits `{ anyOf: [{ type: "object" }, { type: "array" }] }`,
+  // which OpenAI rejects for function tools ("must be a JSON Schema of type object").
+  if (!isRecord(value)) return false
+  if (Object.keys(value).length !== 1) return false
+  const anyOf = (value as Record<string, unknown>).anyOf
+  if (!Array.isArray(anyOf) || anyOf.length !== 2) return false
+  const hasObject = anyOf.some((item) => isRecord(item) && item.type === "object" && Object.keys(item).length === 1)
+  const hasArray = anyOf.some((item) => isRecord(item) && item.type === "array" && Object.keys(item).length === 1)
+  return hasObject && hasArray
 }
 
 const project = (
