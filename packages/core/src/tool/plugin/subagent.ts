@@ -5,11 +5,10 @@ import type { Context } from "@opencode-ai/plugin/effect/plugin"
 import { Effect, Schema } from "effect"
 import { Agent } from "../../agent.js"
 import { Config } from "../../config.js"
-import { Job } from "../../job.js"
 import { Permission } from "../../permission.js"
 import { Session } from "../../session.js"
 import { SessionSchema } from "../../session/schema.js"
-import { SubagentCompletion } from "../../session/subagent-completion.js"
+import { SessionTeam } from "../../session/team.js"
 import { SubagentJob } from "../../session/subagent-job.js"
 
 export const name = "subagent"
@@ -27,39 +26,59 @@ const backgroundResult = (sessionID: SessionSchema.ID) => ({
 export const Input = Schema.Struct({
   agent: Schema.String.annotate({ description: "The type of specialized agent to use for this task" }),
   description: Schema.String.annotate({ description: "A short 3-5 word label for the task, displayed to the user" }),
-  prompt: Schema.String.annotate({ description: "The task for the subagent to perform" }),
-  sessionID: Schema.optionalKey(SessionSchema.ID).annotate({
+  prompt: Schema.optionalKey(Schema.String).annotate({
     description:
-      "Continue a specific previous subagent conversation by passing its sessionID. Calls without a sessionID start a new conversation.",
+      "The task for the subagent to perform. Required for plain spawns; must be omitted for team spawns (the leader assigns work via message_to_peer).",
   }),
-  background: Schema.optionalKey(Schema.Boolean).annotate({
+  team: Schema.optionalKey(Schema.String).annotate({
     description:
-      "Run the subagent in the background and return immediately. You will be notified when it completes. DO NOT sleep, poll, or proactively check on its progress.",
+      "Spawn this subagent into a team identified by this id. Team members share a roster and can message each other with message_to_peer; the first spawn becomes the team's leader and the only member that can message you. Use this when several subagents need to coordinate instead of reporting back independently.",
   }),
 })
 
 export const Output = Schema.Struct({
   sessionID: SessionSchema.ID,
-  status: Schema.Literals(["completed", "running"]),
+  status: Schema.Literals(["completed", "running", "dormant"]),
   output: Schema.String,
 })
 export const description = [
-  "Spawns an agent in a child session to work on the specified task.",
-  "The output includes a sessionID you can pass back later to continue that specific conversation with the subagent.",
-  "New child sessions start with fresh context, so include all relevant context and instructions when you don't pass a sessionID.",
-  "Foreground (default) runs the subagent to completion and returns its final response.",
-  "Background mode (background=true) launches it asynchronously and returns immediately; you are notified when it finishes.",
-  "Use background only for independent work that can run while you continue elsewhere.",
+  "Spawns an agent in a child session to work on the specified task. Runs in the background and returns immediately.",
+  "Plain spawns notify you automatically when the subagent finishes.",
+  "Team spawns (team=...) do not notify on completion: teammates communicate by message instead (see message_to_peer).",
+  "Do not sleep, poll for progress, or duplicate its work. If you need a status update from a team, message it with message_to_peer instead of waiting.",
+  "Work on non-overlapping tasks, or briefly tell the user what you launched and end your response.",
 ].join("\n")
+
+const dormantResult = (membership: {
+  name: string
+  role: SessionTeam.Role
+  teamID: string
+  sessionID: SessionSchema.ID
+}) => ({
+  sessionID: membership.sessionID,
+  status: "dormant" as const,
+  output:
+    membership.role === "leader"
+      ? [
+          `Spawned ${membership.name} (leader) in team ${membership.teamID} (sessionID: ${membership.sessionID}).`,
+          "Dormant: no work has started yet. Wake the leader with message_to_peer to begin.",
+          `The leader is the only team member that can message you (as "Boss").`,
+          "Members communicate with each other via message_to_peer.",
+        ].join("\n")
+      : [
+          `Spawned ${membership.name} (member) in team ${membership.teamID} (sessionID: ${membership.sessionID}).`,
+          "Dormant: no work has started yet.",
+        ].join("\n"),
+})
 
 export const Plugin = {
   id: "opencode.tool.subagent",
   effect: Effect.fn("SubagentTool.Plugin")(function* (ctx: Context) {
     const sessions = yield* Session.Service
-    const jobs = yield* Job.Service
     const agents = yield* Agent.Service
     const config = yield* Config.Service
     const permission = yield* Permission.Service
+    const team = yield* SessionTeam.Service
     const subagents = yield* SubagentJob.make
 
     yield* ctx.tool
@@ -115,118 +134,78 @@ export const Plugin = {
                 })
                 .pipe(Effect.mapError((error) => new ToolFailure({ message: `Subagent denied: ${agent.id}`, error })))
 
-              const existing =
-                input.sessionID === undefined
-                  ? undefined
-                  : yield* sessions
-                      .get(input.sessionID)
-                      .pipe(
-                        Effect.mapError(
-                          (error) =>
-                            new ToolFailure({ message: `Subagent session not found: ${input.sessionID}`, error }),
-                        ),
-                      )
-              if (existing !== undefined && existing.parentID !== context.sessionID)
+              const teamID = input.team?.trim()
+              if (teamID && input.prompt !== undefined)
                 return yield* new ToolFailure({
-                  message: `Session ${existing.id} is not a child of the current session`,
+                  message: [
+                    "Team spawns start dormant: the prompt is not executed at spawn time.",
+                    "The leader assigns work to members via message_to_peer. Omit \"prompt\" for team spawns.",
+                  ].join("\n"),
                 })
-              // Continuing with a different agent switches the child, mirroring create semantics
-              // where the agent's configured model wins over the inherited one.
-              if (existing !== undefined && existing.agent !== agent.id) {
-                yield* sessions.switchAgent({ sessionID: existing.id, agent: agent.id }).pipe(
-                  Effect.andThen(
-                    agent.model === undefined
-                      ? Effect.void
-                      : sessions.switchModel({ sessionID: existing.id, model: agent.model }),
-                  ),
-                  Effect.mapError(
-                    (error) =>
-                      new ToolFailure({ message: `Failed to switch subagent session agent: ${existing.id}`, error }),
-                  ),
-                )
-              }
+              if (!teamID && input.prompt === undefined)
+                return yield* new ToolFailure({ message: "The \"prompt\" parameter is required for plain spawns." })
 
-              // Model selection is policy/config/session state, not an LLM-facing tool argument.
               const model = agent.model ?? parent.model
-              const child =
-                existing ??
-                (yield* sessions
-                  .create({
-                    parentID: context.sessionID,
-                    title: input.description,
-                    agent: Agent.ID.make(input.agent),
-                    model,
-                  })
-                  .pipe(
-                    Effect.mapError(
-                      (error) => new ToolFailure({ message: `Parent session not found: ${context.sessionID}`, error }),
-                    ),
-                  ))
-
-              const background = input.background === true
-              yield* context.progress({ sessionID: child.id, status: "running" })
-
-              // Standard prompt admission outside the job: Job.start joining a running child skips
-              // its run effect, and the default wake starts an idle child or steers a running one.
-              yield* sessions
-                .prompt({
-                  sessionID: child.id,
-                  text:
-                    existing === undefined
-                      ? ["You are a subagent spawned by another session.", input.prompt].join("\n")
-                      : input.prompt,
-                  ...(background && existing === undefined ? { resume: false } : {}),
+              const child = yield* sessions
+                .create({
+                  parentID: context.sessionID,
+                  title: input.description,
+                  agent: Agent.ID.make(input.agent),
+                  model,
                 })
                 .pipe(
                   Effect.mapError(
-                    (error) => new ToolFailure({ message: `Failed to prompt subagent: ${child.id}`, error }),
+                    (error) => new ToolFailure({ message: `Parent session not found: ${context.sessionID}`, error }),
                   ),
                 )
 
-              const recovery = {
-                kind: "subagent" as const,
-                parentSessionID: context.sessionID,
-                childSessionID: child.id,
-                agent: agent.name,
-                description: input.description,
-              }
-              yield* subagents.start(recovery)
-
-              if (background) {
+              if (!teamID) {
+                yield* context.progress({ sessionID: child.id, status: "running" })
+                yield* sessions
+                  .prompt({
+                    sessionID: child.id,
+                    text: ["You are a subagent spawned by another session.", input.prompt!].join("\n"),
+                    resume: false,
+                  })
+                  .pipe(
+                    Effect.mapError(
+                      (error) => new ToolFailure({ message: `Failed to prompt subagent: ${child.id}`, error }),
+                    ),
+                  )
+                const recovery = {
+                  kind: "subagent" as const,
+                  parentSessionID: context.sessionID,
+                  childSessionID: child.id,
+                  agent: agent.name,
+                  description: input.description,
+                }
+                yield* subagents.start(recovery)
                 yield* subagents.background(recovery)
                 return backgroundResult(child.id)
               }
 
-              const result = yield* jobs.block({ id: child.id, sessionID: context.sessionID }).pipe(
-                Effect.onInterrupt(() =>
-                  Effect.all([sessions.interrupt(child.id), jobs.cancel(child.id)], {
-                    discard: true,
-                  }),
-                ),
-              )
-              if (result?.type === "backgrounded") {
-                yield* subagents.notify(recovery, result.info.started_at)
-                return backgroundResult(child.id)
-              }
-              // Failure surfaces keep the sessionID visible so the model can continue the child.
-              if (result?.info.status === "error")
-                return yield* new ToolFailure({
-                  message: `Subagent failed (sessionID: ${child.id}): ${result.info.error ?? "unknown error"}`,
+              const membership = yield* team
+                .register({ parentID: context.sessionID, teamID, sessionID: child.id })
+                .pipe(
+                  Effect.mapError(
+                    (error) => new ToolFailure({ message: `Failed to register team member: ${child.id}`, error }),
+                  ),
+                )
+              yield* sessions
+                .rename({
+                  sessionID: child.id,
+                  title: `${membership.name} (${membership.role}) — ${input.description}`,
                 })
-              if (result?.info.status === "cancelled")
-                return yield* new ToolFailure({ message: `Subagent cancelled (sessionID: ${child.id})` })
-              return {
-                sessionID: child.id,
-                status: "completed" as const,
-                output: result?.info.output ?? SubagentCompletion.NO_TEXT,
-              }
+                .pipe(
+                  Effect.mapError(
+                    (error) => new ToolFailure({ message: `Failed to rename team member: ${child.id}`, error }),
+                  ),
+                )
+              return dormantResult(membership)
             }).pipe(
               Effect.map((output) => ({
                 output,
-                content:
-                  output.status === "completed"
-                    ? `<subagent sessionID="${output.sessionID}" state="completed">\n${output.output}\n</subagent>`
-                    : output.output,
+                content: output.output,
                 metadata: { sessionID: output.sessionID, status: output.status },
               })),
             ),
