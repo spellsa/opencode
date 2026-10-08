@@ -43,6 +43,9 @@ import { SessionModelTransport } from "@opencode-ai/core/session/model-transport
 import { Money } from "@opencode-ai/schema/money"
 import { SessionProjector } from "@opencode-ai/core/session/projector"
 import { SessionExecution } from "@opencode-ai/core/session/execution"
+import { SessionGoal } from "@opencode-ai/core/session/goal"
+import { GoalPlugin } from "@opencode-ai/core/plugin/goal"
+import { Command } from "@opencode-ai/core/command"
 import { SessionRunCoordinator } from "@opencode-ai/core/session/run-coordinator"
 import { SessionRunner } from "@opencode-ai/core/session/runner/index"
 import { SessionRunnerLLM } from "@opencode-ai/core/session/runner/llm"
@@ -457,6 +460,8 @@ const layer = Layer.unwrap(
         SessionProjector.node,
         SessionStore.node,
         SessionInbox.node,
+        SessionGoal.node,
+        Command.node,
         Agent.node,
         Catalog.node,
         Tool.node,
@@ -578,6 +583,59 @@ const scenario = (
       return yield* body(s)
     }),
   )
+
+scenario("goal continues after a text response and stops on update_goal", function* (s) {
+  const goals = yield* SessionGoal.Service
+  const commands = yield* Command.Service
+  const tools = yield* Tool.Service
+  const hooks = yield* PluginHooks.Service
+  yield* GoalPlugin.Plugin.effect(
+    host({
+      command: {
+        list: () =>
+          commands
+            .list()
+            .pipe(Effect.map((data) => ({ location: host().location, data }))),
+        transform: commands.transform,
+        reload: commands.reload,
+      },
+      tool: {
+        transform: tools.transform,
+        reload: tools.reload,
+        hook: (name, callback) => hooks.register("tool", name, callback),
+      },
+      session: { hook: (name, callback) => hooks.register("session", name, callback) },
+    }),
+  )
+  yield* goals.set(sessionID, "テストを通す")
+  yield* s.admit("Work on the goal")
+  yield* s.llm.push(
+    TestLLM.text("Still working", "goal-progress"),
+    TestLLM.tool("goal-complete", "update_goal", { status: "complete" }),
+    TestLLM.text("Verified", "goal-done"),
+  )
+  yield* s.resume
+  expect(s.requests).toHaveLength(3)
+  expect(yield* goals.get(sessionID)).toEqual({ objective: "テストを通す", status: "complete" })
+  expect(
+    (yield* s.context).some(
+      (message) => message.type === "synthetic" && message.text === SessionGoal.continuation("テストを通す"),
+    ),
+  ).toBe(true)
+  expect(yield* s.inbox).toEqual([])
+
+  yield* goals.status(sessionID, "active")
+  expect(yield* goals.enqueue(sessionID)).toBe(true)
+  yield* commands.execute({ name: "goal", invocation: { sessionID, prompt: { text: "pause" }, delivery: "steer" } })
+  expect((yield* goals.get(sessionID))?.status).toBe("paused")
+  expect(yield* s.inbox).toEqual([])
+  expect(yield* goals.enqueue(sessionID)).toBe(false)
+  yield* goals.status(sessionID, "active")
+  expect(yield* goals.enqueue(sessionID)).toBe(true)
+  yield* commands.execute({ name: "goal", invocation: { sessionID, prompt: { text: "clear" }, delivery: "steer" } })
+  expect(yield* goals.get(sessionID)).toBeUndefined()
+  expect(yield* s.inbox).toEqual([])
+})
 
 // Subscribe before resuming; model requests can arrive before retry backoff is scheduled.
 const subscribeRetries = (s: Scenario) =>

@@ -12,6 +12,7 @@ import type { Workspace } from "@opencode-ai/schema/workspace"
 import { Timestamps } from "../database/schema.sql.js"
 import type { Instruction } from "@opencode-ai/schema/instruction"
 import type { Session } from "@opencode-ai/schema/session"
+import type { SessionGoal } from "@opencode-ai/schema/session-goal"
 import type { CompactionPayload, MovePayload, SyntheticPayload, UserPayload } from "@opencode-ai/schema/session-inbox"
 import type { RevertV1 } from "@opencode-ai/schema/session-revert"
 import type { Schema } from "effect"
@@ -42,6 +43,7 @@ export const SessionTable = sqliteTable(
     summary_files: integer(),
     summary_diffs: text({ mode: "json" }).$type<FileDiff.LegacyInfo[]>(),
     metadata: text({ mode: "json" }).$type<Session.Metadata>(),
+    goal: text({ mode: "json" }).$type<SessionGoal.Info>(),
     cost: real().notNull().default(0),
     tokens_input: integer().notNull().default(0),
     tokens_output: integer().notNull().default(0),

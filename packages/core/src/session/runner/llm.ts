@@ -10,6 +10,7 @@ import { SessionCompaction } from "../compaction.js"
 import { SessionContext } from "../context.js"
 import { SessionEvent } from "../event.js"
 import { SessionInbox } from "../inbox.js"
+import { SessionGoal } from "../goal.js"
 import { SessionHistory } from "../history.js"
 import { SessionModelRequest } from "../model-request.js"
 import { SessionModelTransport } from "../model-transport.js"
@@ -44,6 +45,7 @@ const layer = Layer.effect(
     const plugins = yield* Plugin.Service
     const title = yield* SessionTitle.Service
     const steps = yield* SessionStep.make
+    const goals = yield* SessionGoal.Service
     // Title generation starts once input is visible and must not delay model execution.
     const titles = yield* FiberMap.make<SessionSchema.ID, void, never>()
 
@@ -55,6 +57,7 @@ const layer = Layer.effect(
       let entering = true
       const promotable = input.promotable ?? "input"
       if (!force && !continuing) {
+        if (promotable === "input") yield* goals.enqueue(sessionID)
         const pending = yield* SessionInbox.nextPromotable(db, sessionID, "input")
         if (!pending) return DrainResult.Complete()
         const control = pending.type === "compaction" || pending.type === "move"
@@ -145,8 +148,10 @@ const layer = Layer.effect(
                 force = false
                 continue
               }
-              if (!force && !continuing && (!pending || (pending.delivery === "queue" && promotable === "steer")))
+              if (!force && !continuing && (!pending || (pending.delivery === "queue" && promotable === "steer"))) {
+                if (promotable === "input" && (yield* goals.enqueue(sessionID))) continue
                 return DrainResult.Complete()
+              }
               const ready = yield* restore(
                 Effect.gen(function* () {
                   const selected = yield* prepareContext(sessionID)
@@ -357,5 +362,6 @@ export const node = makeLocationNode({
     Snapshot.node,
     ToolOutput.node,
     Database.node,
+    SessionGoal.node,
   ],
 })

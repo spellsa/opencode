@@ -35,6 +35,8 @@ export type LocationRef = { directory: string; workspaceID?: string }
 
 export type SessionMetadata = { [x: string]: JsonValue }
 
+export type SessionGoal = { objective: string; status: "active" | "paused" | "complete" }
+
 export type FileDiffInfo = {
   file: string
   patch: string
@@ -581,6 +583,36 @@ export type SessionCreated = {
     metadata?: SessionMetadata
     version: string
   }
+}
+
+export type SessionGoalSet = {
+  id: string
+  created: number
+  metadata?: { [x: string]: any }
+  type: "session.goal.set"
+  durable: { aggregateID: string; seq: number; version: 1 }
+  location?: LocationRef
+  data: { sessionID: string; objective: string }
+}
+
+export type SessionGoalStatusChanged = {
+  id: string
+  created: number
+  metadata?: { [x: string]: any }
+  type: "session.goal.status_changed"
+  durable: { aggregateID: string; seq: number; version: 1 }
+  location?: LocationRef
+  data: { sessionID: string; status: "active" | "paused" | "complete" }
+}
+
+export type SessionGoalCleared = {
+  id: string
+  created: number
+  metadata?: { [x: string]: any }
+  type: "session.goal.cleared"
+  durable: { aggregateID: string; seq: number; version: 1 }
+  location?: LocationRef
+  data: { sessionID: string }
 }
 
 export type SessionAgentSelected = {
@@ -1672,6 +1704,7 @@ export type SessionInfo = {
   location: LocationRef
   subpath?: string
   metadata?: SessionMetadata
+  goal?: SessionGoal
   revert?: SessionRevert
 }
 
@@ -2193,6 +2226,9 @@ export type SessionMessagesResponse = {
 
 export type SessionEventDurable =
   | SessionCreated
+  | SessionGoalSet
+  | SessionGoalStatusChanged
+  | SessionGoalCleared
   | SessionAgentSelected
   | SessionModelSelected
   | SessionMoved
@@ -2252,6 +2288,9 @@ export type V2Event =
   | CatalogUpdated
   | AgentUpdated
   | SessionCreated
+  | SessionGoalSet
+  | SessionGoalStatusChanged
+  | SessionGoalCleared
   | SessionAgentSelected
   | SessionModelSelected
   | SessionMoved
@@ -2847,6 +2886,7 @@ export type SessionImportInput = {
       readonly location: { readonly directory: string; readonly workspaceID?: string }
       readonly subpath?: string
       readonly metadata?: { readonly [x: string]: JsonValue }
+      readonly goal?: { readonly objective: string; readonly status: "active" | "paused" | "complete" }
       readonly revert?: {
         readonly messageID: string
         readonly partID?: string
@@ -3126,6 +3166,7 @@ export type SessionImportInput = {
       readonly location: { readonly directory: string; readonly workspaceID?: string }
       readonly subpath?: string
       readonly metadata?: { readonly [x: string]: JsonValue }
+      readonly goal?: { readonly objective: string; readonly status: "active" | "paused" | "complete" }
       readonly revert?: {
         readonly messageID: string
         readonly partID?: string
@@ -3405,6 +3446,7 @@ export type SessionImportInput = {
       readonly location: { readonly directory: string; readonly workspaceID?: string }
       readonly subpath?: string
       readonly metadata?: { readonly [x: string]: JsonValue }
+      readonly goal?: { readonly objective: string; readonly status: "active" | "paused" | "complete" }
       readonly revert?: {
         readonly messageID: string
         readonly partID?: string

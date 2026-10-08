@@ -74,6 +74,9 @@ import { SkillTool } from "../tool/plugin/skill.js"
 import { SubagentTool } from "../tool/plugin/subagent.js"
 import { TeamTool } from "../tool/plugin/team.js"
 import { SessionTeam } from "../session/team.js"
+import { SessionGoal } from "../session/goal.js"
+import { SessionExecution } from "../session/execution.js"
+import { GoalPlugin } from "./goal.js"
 import { Tool } from "../tool.js"
 import { ToolOutput } from "../tool-output.js"
 import { WebFetchTool } from "../tool/plugin/webfetch.js"
@@ -131,6 +134,8 @@ const services = [
   SessionCompaction.Service,
   SessionInstructions.Service,
   SessionTeam.Service,
+  SessionGoal.Service,
+  SessionExecution.Service,
   Shell.Service,
   ShellSelect.Service,
   Snapshot.Service,
@@ -181,6 +186,8 @@ export const requirements = LayerNode.group([
   SessionCompaction.node,
   SessionInstructions.node,
   SessionTeam.node,
+  SessionGoal.node,
+  SessionExecution.node,
   Shell.node,
   ShellSelect.node,
   Snapshot.node,
@@ -203,6 +210,7 @@ const pre = [
   AgentPlugin.Plugin,
   PlanPlugin.Plugin,
   CommandPlugin.Plugin,
+  GoalPlugin.Plugin,
   SkillPlugin.Plugin,
   VcsHgPlugin.Plugin,
   ...SystemPromptPlugin.Plugins,

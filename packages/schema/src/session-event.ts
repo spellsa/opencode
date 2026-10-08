@@ -25,6 +25,7 @@ import { TokenUsage } from "./token-usage.js"
 import { SessionInbox } from "./session-inbox.js"
 import { Project } from "./project.js"
 import { SessionFork } from "./session-fork.js"
+import { SessionGoal } from "./session-goal.js"
 
 export { FileAttachment }
 
@@ -47,6 +48,22 @@ const options = {
     version: 1,
   },
 } as const
+export const GoalSet = Event.durable({
+  type: "session.goal.set",
+  ...options,
+  schema: { ...Base, objective: SessionGoal.Info.fields.objective },
+})
+export const GoalStatusChanged = Event.durable({
+  type: "session.goal.status_changed",
+  ...options,
+  schema: { ...Base, status: SessionGoal.Status },
+})
+export const GoalCleared = Event.durable({
+  type: "session.goal.cleared",
+  ...options,
+  schema: Base,
+})
+
 export const Created = Event.durable({
   type: "session.created",
   ...options,
@@ -622,6 +639,9 @@ export namespace RevertEvent {
 
 export const Definitions = Event.inventory(
   Created,
+  GoalSet,
+  GoalStatusChanged,
+  GoalCleared,
   AgentSelected,
   ModelSelected,
   Moved,

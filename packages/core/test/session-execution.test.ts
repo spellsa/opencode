@@ -14,6 +14,7 @@ import { ProjectTable } from "@opencode-ai/core/project/sql"
 import { AbsolutePath } from "@opencode-ai/core/schema"
 import { Session } from "@opencode-ai/core/session"
 import { SessionExecution } from "@opencode-ai/core/session/execution"
+import { SessionGoal } from "@opencode-ai/core/session/goal"
 import { SessionRestart } from "@opencode-ai/core/session/execution/restart"
 import { UserInterruptedError } from "@opencode-ai/core/session/error"
 import { SessionEvent } from "@opencode-ai/core/session/event"
@@ -28,7 +29,16 @@ import { testEffect } from "./lib/effect"
 
 const it = testEffect(
   AppNodeBuilder.build(
-    LayerNode.group([Database.node, Bus.node, SessionStore.node, SessionInbox.node, Job.node, KV.node, Session.node]),
+    LayerNode.group([
+      Database.node,
+      Bus.node,
+      SessionStore.node,
+      SessionInbox.node,
+      SessionGoal.node,
+      Job.node,
+      KV.node,
+      Session.node,
+    ]),
   ),
 )
 
@@ -1368,6 +1378,7 @@ function buildExecution(
       SessionRestart.layer(options).pipe(
         Layer.provideMerge(sessionLayer),
         Layer.provideMerge(Layer.fresh(SessionExecution.layer)),
+        Layer.provide(Layer.succeed(SessionGoal.Service, yield* SessionGoal.Service)),
         Layer.provide(Layer.succeed(Database.Service, database)),
         Layer.provide(Layer.succeed(Bus.Service, bus)),
         Layer.provide(Layer.succeed(SessionStore.Service, store)),

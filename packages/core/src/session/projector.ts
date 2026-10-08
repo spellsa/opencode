@@ -434,6 +434,30 @@ const layer = Layer.effectDiscard(
   Effect.gen(function* () {
     const bus = yield* Bus.Service
     const db = (yield* Database.Service).db
+    yield* bus.project(SessionEvent.GoalSet, (event) =>
+      db
+        .update(SessionTable)
+        .set({ goal: { objective: event.data.objective, status: "active" } })
+        .where(eq(SessionTable.id, event.data.sessionID))
+        .run()
+        .pipe(Effect.orDie),
+    )
+    yield* bus.project(SessionEvent.GoalStatusChanged, (event) =>
+      db
+        .update(SessionTable)
+        .set({ goal: sql`json_set(${SessionTable.goal}, '$.status', ${event.data.status})` })
+        .where(eq(SessionTable.id, event.data.sessionID))
+        .run()
+        .pipe(Effect.orDie),
+    )
+    yield* bus.project(SessionEvent.GoalCleared, (event) =>
+      db
+        .update(SessionTable)
+        .set({ goal: null })
+        .where(eq(SessionTable.id, event.data.sessionID))
+        .run()
+        .pipe(Effect.orDie),
+    )
     yield* bus.project(SessionEvent.Created, (event) =>
       Effect.gen(function* () {
         const stored = yield* db

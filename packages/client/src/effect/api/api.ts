@@ -444,6 +444,33 @@ export type SessionLogOutput =
           readonly id: Event.ID
           readonly created: number
           readonly metadata?: { readonly [x: string]: unknown } | undefined
+          readonly type: "session.goal.set"
+          readonly durable: { readonly aggregateID: string; readonly seq: Event.Seq; readonly version: Event.Version }
+          readonly location?: Location.Ref | undefined
+          readonly data: { readonly sessionID: Session.ID; readonly objective: string }
+        }
+      | {
+          readonly id: Event.ID
+          readonly created: number
+          readonly metadata?: { readonly [x: string]: unknown } | undefined
+          readonly type: "session.goal.status_changed"
+          readonly durable: { readonly aggregateID: string; readonly seq: Event.Seq; readonly version: Event.Version }
+          readonly location?: Location.Ref | undefined
+          readonly data: { readonly sessionID: Session.ID; readonly status: "active" | "paused" | "complete" }
+        }
+      | {
+          readonly id: Event.ID
+          readonly created: number
+          readonly metadata?: { readonly [x: string]: unknown } | undefined
+          readonly type: "session.goal.cleared"
+          readonly durable: { readonly aggregateID: string; readonly seq: Event.Seq; readonly version: Event.Version }
+          readonly location?: Location.Ref | undefined
+          readonly data: { readonly sessionID: Session.ID }
+        }
+      | {
+          readonly id: Event.ID
+          readonly created: number
+          readonly metadata?: { readonly [x: string]: unknown } | undefined
           readonly type: "session.agent.selected"
           readonly durable: { readonly aggregateID: string; readonly seq: Event.Seq; readonly version: Event.Version }
           readonly location?: Location.Ref | undefined

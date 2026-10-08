@@ -14,6 +14,7 @@ import { SessionStore } from "./store.js"
 import { toSessionError } from "./to-session-error.js"
 import { UserInterruptedError } from "./error.js"
 import { SessionInbox } from "./inbox.js"
+import { SessionGoal } from "./goal.js"
 
 export interface Interface {
   /** Snapshots active execution owned by this process. */
@@ -56,6 +57,7 @@ export const layer = Layer.effect(
     const instances = yield* Instance.Service
     const bus = yield* Bus.Service
     const jobs = yield* Job.Service
+    const goals = yield* SessionGoal.Service
     const db = (yield* Database.Service).db
     const reportLifecycle = <A>(sessionID: SessionSchema.ID, effect: Effect.Effect<A>) =>
       effect.pipe(
@@ -122,7 +124,11 @@ export const layer = Layer.effect(
             if (outcome.type === "interrupted") {
               // A user cancel releases the claim: the turn must not resurrect at the next
               // boot. Shutdown interruption keeps it for restart continuity.
-              if (outcome.reason === "user") yield* jobs.cancel(sessionID)
+              if (outcome.reason === "user") {
+                if ((yield* goals.get(sessionID))?.status === "active")
+                  yield* goals.status(sessionID, "paused").pipe(Effect.orDie)
+                yield* jobs.cancel(sessionID)
+              }
               yield* bus.publish(
                 SessionEvent.Execution.Interrupted,
                 { sessionID, reason: outcome.reason },
@@ -147,6 +153,8 @@ export const layer = Layer.effect(
       isActive: coordinator.isActive,
       interrupt: (sessionID, options) =>
         Effect.gen(function* () {
+          if ((yield* goals.get(sessionID))?.status === "active")
+            yield* goals.status(sessionID, "paused").pipe(Effect.orDie)
           const interrupted = yield* coordinator.interrupt(sessionID, "user")
           if (!options?.continue) return interrupted
           // Resume steering input and between-turn control work from the interrupted
@@ -173,7 +181,7 @@ export const layer = Layer.effect(
 export const node = makeGlobalNode({
   service: Service,
   layer,
-  deps: [SessionStore.node, Instance.node, Bus.node, Database.node, Job.node],
+  deps: [SessionStore.node, Instance.node, Bus.node, Database.node, Job.node, SessionGoal.node],
 })
 
 /** Low-level compatibility layer for callers that only need durable Session recording. */
