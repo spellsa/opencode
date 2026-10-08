@@ -6,6 +6,7 @@ import { App } from "../../app.js"
 import { Credential } from "../../credential.js"
 import { Bus } from "../../bus.js"
 import { Integration } from "../../integration.js"
+import { Model } from "../../model.js"
 import { OauthCallbackPage } from "../../oauth/page.js"
 import { Provider } from "../../provider.js"
 import type { PluginInternal } from "../internal.js"
@@ -265,6 +266,10 @@ export const OpenAIPlugin = define({
         originator: "opencode",
         ...(typeof account === "string" ? { "chatgpt-account-id": account } : {}),
       })
+      const longLuna = ["gpt-6-luna", "gpt-6-luna-fast"].flatMap((id) => {
+        const model = item.models.get(Model.ID.make(id))
+        return model?.enabled ? [{ model, limit: { ...model.limit } }] : []
+      })
       for (const model of item.models.values()) {
         // ChatGPT-plan tokens only authorize codex-eligible models, and the
         // subscription covers usage, so hide the rest and zero the cost.
@@ -274,10 +279,13 @@ export const OpenAIPlugin = define({
             return
           }
           const apiID = draft.modelID ?? draft.id
-          const match = apiID.match(/^gpt-(\d+\.\d+)/)
+          const match = apiID.match(/^gpt-(\d+)(?:\.(\d+))?(?:-|$)/)
+          const tooOld =
+            match &&
+            (Number(match[1]) < 5 || (Number(match[1]) === 5 && Number(match[2] ?? 0) <= 4))
           if (
             !codexAllowed.has(apiID) &&
-            (codexDisallowed.has(apiID) || !match || Number.parseFloat(match[1]) <= 5.4)
+            (codexDisallowed.has(apiID) || !match || tooOld)
           ) {
             draft.enabled = false
             return
@@ -285,6 +293,14 @@ export const OpenAIPlugin = define({
           draft.cost = []
           // Match Codex CLI so context consumption and subscription usage stay consistent between clients.
           draft.limit = { ...draft.limit, context: 400_000, input: 272_000 }
+        })
+      }
+      for (const entry of longLuna) {
+        evt.model.update(item.provider.id, Model.ID.make(`${entry.model.id}-1m`), (draft) => {
+          Object.assign(draft, structuredClone(entry.model))
+          draft.modelID = entry.model.modelID ?? entry.model.id
+          draft.name = `${entry.model.name} (1M)`
+          draft.limit = entry.limit
         })
       }
     })
