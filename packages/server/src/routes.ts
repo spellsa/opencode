@@ -26,6 +26,8 @@ import { LocationServiceMap } from "@opencode-ai/core/location-service-map"
 import { LocationActivity } from "@opencode-ai/core/location-activity"
 import { ModelsDev } from "@opencode-ai/core/models-dev"
 import { SessionRestart } from "@opencode-ai/core/session/execution/restart"
+import { SessionSchedule } from "@opencode-ai/core/session/schedule"
+import { SessionWatch } from "@opencode-ai/core/session/watch"
 import { PluginUpdate } from "@opencode-ai/core/plugin/update"
 import { SdkPlugins } from "@opencode-ai/core/plugin/sdk"
 import { WellKnown } from "@opencode-ai/core/wellknown"
@@ -69,6 +71,8 @@ const applicationServiceNodes = [
   LocationServiceMap.node,
   LocationActivity.node,
   SessionRestart.node,
+  SessionSchedule.node,
+  SessionWatch.node,
   Workspace.node,
 ] as const
 const applicationServices = LayerNode.group(applicationServiceNodes)

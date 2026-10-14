@@ -26,7 +26,11 @@ const child = makeSession("ses_child", "ses_main", "@Coder subagent refactor")
 const grandchild = makeSession("ses_gc", "ses_child", "@Search subagent lookup")
 const all = [main, child, grandchild]
 
-function fixtureFetch(prompts: { path: string; body: unknown }[], mutations: { type: string; body: unknown }[]) {
+function fixtureFetch(
+  prompts: { path: string; body: unknown }[],
+  mutations: { type: string; body: unknown }[],
+  sessions = all,
+) {
   return async (url: URL, request: Request) => {
     if (url.pathname === "/api/location") return json(location)
     if (url.pathname === "/api/agent")
@@ -51,12 +55,12 @@ function fixtureFetch(prompts: { path: string; body: unknown }[], mutations: { t
     if (url.pathname === "/api/session") {
       const parentID = url.searchParams.get("parentID")
       if (parentID && parentID !== "null")
-        return json({ data: all.filter((session) => session.parentID === parentID), cursor: {} })
-      return json({ data: all, cursor: {} })
+        return json({ data: sessions.filter((session) => session.parentID === parentID), cursor: {} })
+      return json({ data: sessions, cursor: {} })
     }
     const detail = url.pathname.match(/^\/api\/session\/(ses_\w+)$/)
     if (detail) {
-      const found = all.find((session) => session.id === detail[1])
+      const found = sessions.find((session) => session.id === detail[1])
       return found ? json({ data: found }) : new Response(null, { status: 404 })
     }
     if (/^\/api\/session\/[^/]+\/(message|inbox|permission)$/.test(url.pathname)) return json({ data: [], cursor: {} })
@@ -70,7 +74,7 @@ function fixtureFetch(prompts: { path: string; body: unknown }[], mutations: { t
       return json({
         data: {
           id: "msg_test",
-          sessionID: child.id,
+          sessionID: url.pathname.split("/")[3],
           type: "user",
           delivery: "steer",
           payload: { text: "hello" },
@@ -82,15 +86,18 @@ function fixtureFetch(prompts: { path: string; body: unknown }[], mutations: { t
   }
 }
 
-test("child session shows the prompt input and keeps its own agent and model", async () => {
+test("child session shows the prompt input, keeps its own agent, and commits its model", async () => {
   await using state = await tmpdir()
   const mutations: { type: string; body: unknown }[] = []
   const prompts: { path: string; body: unknown }[] = []
+  // The child runs a subagent agent the composer's picker does not list; its
+  // durable model must still resolve and be committed.
+  const sessions = all.map((session) => (session.id === child.id ? { ...session, agent: "general" } : session))
   await using setup = await createAppFixture({
     state: state.path,
     config: { animations: false },
     args: { sessionID: child.id },
-    fetch: fixtureFetch(prompts, mutations),
+    fetch: fixtureFetch(prompts, mutations, sessions),
   })
   await setup.ready
   await setup.waitFor(() => setup.renderer.currentFocusedRenderable instanceof TextareaRenderable)
@@ -101,10 +108,13 @@ test("child session shows the prompt input and keeps its own agent and model", a
   await setup.waitFor(() => prompts.length > 0)
   expect(setup.captureCharFrame()).toContain("hello subagent")
   expect(prompts[0]).toMatchObject({ path: "/api/session/ses_child/prompt", body: { text: "hello subagent" } })
-  expect(mutations).toEqual([])
+  // The child keeps its own agent, but its picker-selected model is committed to the session.
+  expect(mutations).toEqual([
+    { type: "model", body: { model: { providerID: "demo", id: "first" } } },
+  ])
 })
 
-test("agents dialog lists the nested tree and routes messages to the selected session", async () => {
+test("subagents dialog lists family sessions and routes messages to the selected one", async () => {
   await using state = await tmpdir()
   const mutations: { type: string; body: unknown }[] = []
   const prompts: { path: string; body: unknown }[] = []
@@ -118,19 +128,54 @@ test("agents dialog lists the nested tree and routes messages to the selected se
   await setup.waitFor(() => setup.renderer.currentFocusedRenderable instanceof TextareaRenderable)
   await setup.mockInput.typeText("/subagents")
   setup.mockInput.pressEnter()
-  await setup.waitForFrame((frame) => frame.includes("└─ Build: refactor"))
+  await setup.waitForFrame((frame) => frame.includes("Build: refactor"))
   const frame = setup.captureCharFrame()
-  expect(frame).toContain("Build: Main session")
-  expect(frame).toContain("└─ Build: lookup")
+  expect(frame).toContain("Subagents")
+  expect(frame).toContain("Build: refactor")
+  expect(frame).toContain("Build: lookup")
 
   const lines = frame.split("\n")
-  const row = lines.findIndex((line) => line.includes("Build: Main session"))
+  const row = lines.findIndex((line) => line.includes("Build: refactor"))
   expect(row).toBeGreaterThan(0)
   await setup.mockMouse.click(30, row)
 
-  await setup.waitForFrame((value) => !value.includes("└─ Search: lookup"))
-  await setup.mockInput.typeText("hi main")
+  await setup.waitFor(() => setup.renderer.currentFocusedRenderable instanceof TextareaRenderable)
+  await setup.mockInput.typeText("hi refactor")
   setup.mockInput.pressEnter()
   await setup.waitFor(() => prompts.length > 0)
-  expect(prompts[0]).toMatchObject({ path: "/api/session/ses_main/prompt", body: { text: "hi main" } })
+  expect(prompts[0]).toMatchObject({ path: "/api/session/ses_child/prompt", body: { text: "hi refactor" } })
+})
+
+test("subagents dialog separates teams with headings and a divider", async () => {
+  await using state = await tmpdir()
+  const mutations: { type: string; body: unknown }[] = []
+  const prompts: { path: string; body: unknown }[] = []
+  const teamSessions = [
+    makeSession("ses_main", undefined, "Main session"),
+    makeSession("ses_a1", "ses_main", "alpha-1 (leader) — work"),
+    makeSession("ses_a2", "ses_main", "alpha-2 (member) — work"),
+    makeSession("ses_b1", "ses_main", "beta-1 (leader) — work"),
+  ]
+  await using setup = await createAppFixture({
+    state: state.path,
+    config: { animations: false },
+    args: { sessionID: "ses_main" },
+    fetch: fixtureFetch(prompts, mutations, teamSessions),
+  })
+  await setup.ready
+  await setup.waitFor(() => setup.renderer.currentFocusedRenderable instanceof TextareaRenderable)
+  await setup.mockInput.typeText("/subagents")
+  setup.mockInput.pressEnter()
+  await setup.waitForFrame((frame) => frame.includes("alpha-1 (leader)"))
+  const frame = setup.captureCharFrame()
+  expect(frame).toContain("alpha")
+  expect(frame).toContain("beta")
+  expect(frame).toContain("alpha-2 (member)")
+  expect(frame).toContain("─")
+
+  const lines = frame.split("\n")
+  const boss = lines.findIndex((line) => line.includes("Build: Main session"))
+  const team = lines.findIndex((line) => line.includes("alpha-1 (leader)"))
+  expect(boss).toBeGreaterThanOrEqual(0)
+  expect(team).toBeGreaterThan(boss)
 })

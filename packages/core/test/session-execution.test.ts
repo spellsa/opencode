@@ -15,6 +15,8 @@ import { AbsolutePath } from "@opencode-ai/core/schema"
 import { Session } from "@opencode-ai/core/session"
 import { SessionExecution } from "@opencode-ai/core/session/execution"
 import { SessionGoal } from "@opencode-ai/core/session/goal"
+import { SessionTeam } from "@opencode-ai/core/session/team"
+import { SessionWatch } from "@opencode-ai/core/session/watch"
 import { SessionRestart } from "@opencode-ai/core/session/execution/restart"
 import { UserInterruptedError } from "@opencode-ai/core/session/error"
 import { SessionEvent } from "@opencode-ai/core/session/event"
@@ -35,6 +37,8 @@ const it = testEffect(
       SessionStore.node,
       SessionInbox.node,
       SessionGoal.node,
+      SessionTeam.node,
+      SessionWatch.node,
       Job.node,
       KV.node,
       Session.node,
@@ -43,6 +47,123 @@ const it = testEffect(
 )
 
 describe("SessionExecution lifecycle", () => {
+  it.effect("watch notifies and wakes its receiver on completion, failure and user interruption", () =>
+    Effect.gen(function* () {
+      const database = yield* Database.Service
+      const watches = yield* SessionWatch.Service
+      const inbox = yield* SessionInbox.Service
+      const receiver = Session.ID.make("ses_watch_receiver")
+      const member = Session.ID.make("ses_watch_member")
+      yield* seedSessions(database, [receiver, member])
+      const input = { members: [member], text: "{member} stopped", enabled: true }
+      yield* watches.save(receiver, input)
+      expect(yield* inbox.list(receiver)).toEqual([])
+      expect(yield* watches.get(receiver)).toMatchObject(input)
+      const scope = yield* Scope.make()
+      yield* Effect.addFinalizer(() => Scope.close(scope, Exit.void))
+      let mode = "complete"
+      let wakes = 0
+      const context = yield* buildExecution(scope, ({ sessionID }) => {
+        if (sessionID === receiver)
+          return Effect.sync(() => {
+            wakes++
+          })
+        if (mode === "failure") return Effect.die("Member failed")
+        if (mode === "interrupt") return Effect.fail(new UserInterruptedError())
+        return Effect.void
+      })
+      const execution = Context.get(context, SessionExecution.Service)
+      yield* execution.resume(member)
+      yield* execution.awaitIdle(receiver)
+      mode = "failure"
+      yield* execution.resume(member).pipe(Effect.exit)
+      yield* execution.awaitIdle(receiver)
+      mode = "interrupt"
+      yield* execution.resume(member).pipe(Effect.exit)
+      yield* execution.awaitIdle(receiver)
+      const pending = yield* inbox.list(receiver)
+      expect(wakes).toBe(3)
+      expect(pending).toHaveLength(3)
+      expect(pending[0]).toMatchObject({
+        delivery: "steer",
+        type: "user",
+        payload: { metadata: { stoppedMemberID: member } },
+      })
+      expect(pending[0]?.payload).toMatchObject({ text: expect.stringContaining(" stopped") })
+      yield* watches.save(receiver, { ...input, enabled: false })
+      mode = "complete"
+      yield* execution.resume(member)
+      expect(yield* inbox.list(receiver)).toHaveLength(3)
+      yield* watches.save(receiver, { ...input, text: "Changed: {member}" })
+      yield* execution.resume(member)
+      yield* execution.awaitIdle(receiver)
+      expect((yield* inbox.list(receiver))[3]?.payload).toMatchObject({ text: expect.stringContaining("Changed:") })
+      yield* watches.remove(receiver)
+      yield* execution.resume(member)
+      expect(yield* watches.get(receiver)).toBeNull()
+      expect(yield* inbox.list(receiver)).toHaveLength(4)
+    }),
+  )
+
+  it.effect("a team goal waits for the last member to stop before waking its leader", () =>
+    Effect.gen(function* () {
+      const database = yield* Database.Service
+      const teams = yield* SessionTeam.Service
+      const goals = yield* SessionGoal.Service
+      const inbox = yield* SessionInbox.Service
+      const parent = Session.ID.make("ses_goal_boss")
+      const leader = Session.ID.make("ses_goal_leader")
+      const member = Session.ID.make("ses_goal_member")
+      yield* seedSessions(database, [parent])
+      yield* seedSessions(database, [leader, member], { parent_id: parent })
+      yield* teams.register({ parentID: parent, teamID: "test-team", sessionID: leader })
+      yield* teams.register({ parentID: parent, teamID: "test-team", sessionID: member })
+      yield* goals.set(leader, "Finish the team task")
+      expect(yield* goals.enqueue(leader)).toBe(false)
+
+      const running = yield* Deferred.make<void>()
+      const release = yield* Deferred.make<void>()
+      const continued = yield* Deferred.make<readonly SessionInbox.Item[]>()
+      const scope = yield* Scope.make()
+      yield* Effect.addFinalizer(() => Scope.close(scope, Exit.void))
+      let leaderDrains = 0
+      const context = yield* buildExecution(scope, ({ sessionID }) =>
+        Effect.gen(function* () {
+          if (sessionID === member) {
+            yield* Deferred.succeed(running, undefined)
+            yield* Deferred.await(release)
+            return
+          }
+          leaderDrains++
+          if (leaderDrains === 1) return
+          yield* Deferred.succeed(continued, yield* inbox.list(leader))
+          yield* goals.status(leader, "complete").pipe(Effect.orDie)
+        }),
+      )
+      const execution = Context.get(context, SessionExecution.Service)
+      yield* execution.wake(member)
+      yield* Deferred.await(running)
+      yield* execution.resume(leader)
+      expect(leaderDrains).toBe(1)
+      expect(yield* inbox.list(leader)).toEqual([])
+
+      yield* Deferred.succeed(release, undefined)
+      const pending = yield* Deferred.await(continued)
+      yield* execution.awaitIdle(member)
+      yield* execution.awaitIdle(leader)
+      expect(leaderDrains).toBe(2)
+      expect(pending).toHaveLength(1)
+      expect(pending[0]?.type).toBe("synthetic")
+      expect(yield* inbox.list(leader)).toEqual([])
+      expect(yield* goals.enqueue(leader, new Set())).toBe(false)
+      yield* goals.status(leader, "paused")
+      expect(yield* goals.enqueue(leader, new Set())).toBe(false)
+      yield* goals.status(leader, "active")
+      yield* seedInbox(database, member, ["steer"])
+      expect(yield* goals.enqueue(leader, new Set())).toBe(false)
+    }),
+  )
+
   test("classifies success and typed failure terminals", () => {
     expect(SessionExecution.terminal(Exit.succeed(undefined))).toEqual({ type: "succeeded" })
     expect(
@@ -1379,6 +1500,8 @@ function buildExecution(
         Layer.provideMerge(sessionLayer),
         Layer.provideMerge(Layer.fresh(SessionExecution.layer)),
         Layer.provide(Layer.succeed(SessionGoal.Service, yield* SessionGoal.Service)),
+        Layer.provide(Layer.succeed(SessionTeam.Service, yield* SessionTeam.Service)),
+        Layer.provide(Layer.succeed(SessionWatch.Service, yield* SessionWatch.Service)),
         Layer.provide(Layer.succeed(Database.Service, database)),
         Layer.provide(Layer.succeed(Bus.Service, bus)),
         Layer.provide(Layer.succeed(SessionStore.Service, store)),

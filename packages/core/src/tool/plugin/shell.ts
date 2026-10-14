@@ -4,7 +4,8 @@ import { ToolFailure } from "@opencode-ai/ai"
 import type { Context } from "@opencode-ai/plugin/effect/plugin"
 import type { ShellCreateBefore } from "@opencode-ai/plugin/effect/shell"
 import type { Tool } from "@opencode-ai/schema/tool"
-import { Deferred, Effect, Schema, Scope } from "effect"
+import type { Info } from "@opencode-ai/schema/shell"
+import { Clock, Deferred, Effect, Schema, Scope } from "effect"
 import { Config } from "../../config.js"
 import { Environment } from "../../environment/index.js"
 import { Job } from "../../job.js"
@@ -20,6 +21,8 @@ import { ShellResult } from "../../shell/result.js"
 
 export const name = "shell"
 export const DEFAULT_TIMEOUT_MS = 2 * 60 * 1_000
+export const FOREGROUND_LIMIT_MS = 60_000
+export const RUNNING_NOTICE_MS = 30 * 60_000
 
 const BACKGROUND_INSTRUCTION =
   "You will be notified automatically when the command finishes. The notification will include the command's output. DO NOT run sleep commands or poll the output file to check for completion. You can read from the file when its current output would be useful, such as when inspecting logs from a background server. Otherwise, continue with other work or end your response."
@@ -41,6 +44,7 @@ const description = (shell?: string) =>
     "Rely on automatic truncation unless filtering the output is more useful.",
     "Commands accept an optional timeout, background commands have no timeout by default.",
     "Background commands return immediately, and you will be notified when they complete.",
+    "Foreground commands automatically move to the background after 1 minute. Commands still running after 30 minutes send one status-check notification; they are not automatically stopped.",
   ].join(" ")
 
 export const Input = Schema.Struct({
@@ -50,7 +54,7 @@ export const Input = Schema.Struct({
       "Working directory to execute the command in. Defaults to the current working directory. When possible, avoid changing directories in the command and set the working directory here instead.",
   }),
   timeout: Schema.optionalKey(NonNegativeInt).annotate({
-    description: `Timeout in milliseconds. Set to 0 to disable the timeout. Defaults to ${DEFAULT_TIMEOUT_MS} for foreground commands. Background commands have no timeout by default.`,
+    description: `Timeout in milliseconds. Set to 0 to disable the timeout. Defaults to ${DEFAULT_TIMEOUT_MS} for foreground commands. Background commands have no timeout by default. The timeout is cleared when a foreground command moves to the background.`,
   }),
   background: Schema.optionalKey(Schema.Boolean).annotate({
     description:
@@ -165,10 +169,26 @@ export const Plugin = {
       function* (
         sessionID: SessionSchema.ID,
         id: string,
-        shellID: string,
-        command: string,
+        shellInfo: Info,
+        startedAt: number,
         settled: Deferred.Deferred<Output>,
       ) {
+        const first = yield* jobs.wait({
+          id,
+          timeout: Math.max(0, RUNNING_NOTICE_MS - ((yield* Clock.currentTimeMillis) - startedAt)),
+        })
+        if (first.timedOut && first.info?.status === "running")
+          yield* sessions.synthetic({
+            sessionID,
+            description: shellInfo.command,
+            ...ShellResult.notification({
+              jobID: id,
+              shellID: shellInfo.id,
+              command: shellInfo.command,
+              state: "running",
+              text: `Command is still running 30 minutes after starting. Inspect the log and process state, then decide whether to continue running it or stop it.\nOutput is streaming to: ${shellInfo.file}${shellInfo.pid === undefined ? "" : `\nProcess ID: ${shellInfo.pid}`}`,
+            }),
+          })
         const info = (yield* jobs.wait({ id })).info
         if (!info || info.status === "running") return
         const output = info.status === "completed" ? yield* Deferred.await(settled) : undefined
@@ -180,11 +200,11 @@ export const Plugin = {
         yield* sessions.synthetic({
           ...(info.notificationID ? { id: info.notificationID } : {}),
           sessionID,
-          description: command,
+          description: shellInfo.command,
           ...ShellResult.notification({
             jobID: id,
-            shellID,
-            command,
+            shellID: shellInfo.id,
+            command: shellInfo.command,
             state: info.status,
             text,
             output,
@@ -220,6 +240,7 @@ export const Plugin = {
                     finalTimeout = yield* prepare(invocation, context)
                   }),
               )
+              const startedAt = yield* Clock.currentTimeMillis
               yield* context.progress({ shellID: info.id })
 
               const settled = yield* Deferred.make<Output>()
@@ -256,16 +277,23 @@ export const Plugin = {
 
               if (input.background === true) {
                 yield* jobs.background(job.id)
-                yield* notifyWhenDone(context.sessionID, job.id, info.id, info.command, settled)
+                yield* notifyWhenDone(context.sessionID, job.id, info, startedAt, settled)
                 return backgroundResult(info.id, info.file)
               }
 
-              const result = yield* jobs
-                .block({ id: job.id, sessionID: context.sessionID })
-                .pipe(Effect.onInterrupt(() => jobs.cancel(job.id).pipe(Effect.ignore)))
+              const result = yield* Effect.scoped(
+                Effect.gen(function* () {
+                  yield* Effect.forkScoped(
+                    Effect.sleep(
+                      Math.max(0, FOREGROUND_LIMIT_MS - ((yield* Clock.currentTimeMillis) - startedAt)),
+                    ).pipe(Effect.andThen(jobs.background(job.id))),
+                  )
+                  return yield* jobs.block({ id: job.id, sessionID: context.sessionID })
+                }),
+              ).pipe(Effect.onInterrupt(() => jobs.cancel(job.id).pipe(Effect.ignore)))
               if (result?.type === "backgrounded") {
                 yield* shell.timeout(info.id, 0)
-                yield* notifyWhenDone(context.sessionID, job.id, info.id, info.command, settled)
+                yield* notifyWhenDone(context.sessionID, job.id, info, startedAt, settled)
                 return backgroundResult(info.id, info.file)
               }
               if (result?.info.status === "error")

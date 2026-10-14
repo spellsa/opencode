@@ -37,6 +37,8 @@ import { computePromptTraits } from "../../prompt/traits"
 import { expandPastedTextPlaceholders, expandTrackedPastedText } from "../../prompt/part"
 import { usePromptStash } from "../../prompt/stash"
 import { DialogStash } from "../dialog-stash"
+import { DialogSchedule } from "../dialog-schedule"
+import { DialogWatch } from "../dialog-watch"
 import { type AutocompleteOption, type AutocompleteRef, Autocomplete } from "./autocomplete"
 import { useRenderer, useTerminalDimensions, type JSX } from "@opentui/solid"
 import { Locale } from "../../util/locale"
@@ -615,6 +617,60 @@ export function Prompt(props: PromptProps) {
         },
       },
       {
+        title: "定期送信",
+        name: "session.schedule",
+        category: "Session",
+        slash: { name: "schedule" },
+        run: async () => {
+          const sessionID = props.sessionID
+          if (sessionID) {
+            dialog.replace(() => <DialogSchedule sessionID={sessionID} />)
+            return
+          }
+          const selection = local.model.selection()
+          const created = data.session.create({
+            location: currentLocation.ref ?? data.location.default(),
+            agent: local.agent.current()?.id,
+            model: selection
+              ? { providerID: selection.providerID, id: selection.modelID, variant: local.model.variant.current() }
+              : undefined,
+          })
+          await created.request
+            .then(() => {
+              route.navigate({ type: "session", sessionID: created.id })
+              dialog.replace(() => <DialogSchedule sessionID={created.id} />)
+            })
+            .catch(toast.error)
+        },
+      },
+      {
+        title: "メンバーの停止通知",
+        name: "session.watch",
+        category: "Session",
+        slash: { name: "watch" },
+        run: async () => {
+          const sessionID = props.sessionID
+          if (sessionID) {
+            dialog.replace(() => <DialogWatch sessionID={sessionID} />)
+            return
+          }
+          const selection = local.model.selection()
+          const created = data.session.create({
+            location: currentLocation.ref ?? data.location.default(),
+            agent: local.agent.current()?.id,
+            model: selection
+              ? { providerID: selection.providerID, id: selection.modelID, variant: local.model.variant.current() }
+              : undefined,
+          })
+          await created.request
+            .then(() => {
+              route.navigate({ type: "session", sessionID: created.id })
+              dialog.replace(() => <DialogWatch sessionID={created.id} />)
+            })
+            .catch(toast.error)
+        },
+      },
+      {
         title: "Move session",
         desc: "Move to another project dir",
         name: "session.move",
@@ -1166,21 +1222,19 @@ export function Prompt(props: PromptProps) {
     const agent = local.agent.current()
     if (!agent) return false
     const child = props.sessionID !== undefined && data.session.get(props.sessionID)?.parentID !== undefined
-    const selection = child ? undefined : local.model.selection()
-    if (!child) {
-      if (!selection) {
-        void promptModelWarning()
-        return false
-      }
-      const usesModel = store.mode !== "shell" && !isSkill
-      if (usesModel && !local.model.available(selection)) {
-        toast.show({
-          title: "Model unavailable",
-          message: `${selection.providerID}/${selection.modelID} is not available in this session's location`,
-          variant: "warning",
-        })
-        return false
-      }
+    const selection = local.model.selection()
+    if (!selection) {
+      void promptModelWarning()
+      return false
+    }
+    const usesModel = store.mode !== "shell" && !isSkill
+    if (usesModel && !local.model.available(selection)) {
+      toast.show({
+        title: "Model unavailable",
+        message: `${selection.providerID}/${selection.modelID} is not available in this session's location`,
+        variant: "warning",
+      })
+      return false
     }
 
     // Snapshot the composer and clear it synchronously, before the first await.
@@ -1280,9 +1334,10 @@ export function Prompt(props: PromptProps) {
       }
     }
     const commitModel = () => {
-      if (child) return Promise.resolve()
       const model = { providerID: selection!.providerID, id: selection!.modelID, variant }
-      const cancelCommit = local.model.trackSessionCommit(target, model, agent.id)
+      // Child sessions persist their own model but do not reconcile drafts through the
+      // agent-aware selection store, so commit directly and skip draft tracking.
+      const cancelCommit = child ? () => {} : local.model.trackSessionCommit(target, model, agent.id)
       return client.api.session.switchModel({ sessionID: target, model }).catch((error) => {
         cancelCommit()
         throw new Error(`Failed to switch model: ${errorMessage(error)}`, { cause: error })

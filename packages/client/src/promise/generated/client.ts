@@ -15,6 +15,20 @@ import type {
   PluginCheckOutput,
   PluginUpdateInput,
   PluginUpdateOutput,
+  SessionWatchGetInput,
+  SessionWatchGetOutput,
+  SessionWatchSaveInput,
+  SessionWatchSaveOutput,
+  SessionWatchRemoveInput,
+  SessionWatchRemoveOutput,
+  SessionScheduleListInput,
+  SessionScheduleListOutput,
+  SessionScheduleCreateInput,
+  SessionScheduleCreateOutput,
+  SessionScheduleUpdateInput,
+  SessionScheduleUpdateOutput,
+  SessionScheduleRemoveInput,
+  SessionScheduleRemoveOutput,
   SessionListInput,
   SessionListOutput,
   SessionStatsInput,
@@ -512,6 +526,86 @@ export function make(options: ClientOptions) {
         ),
     },
     session: {
+      watchGet: (input: SessionWatchGetInput, requestOptions?: RequestOptions) =>
+        request<{ readonly data: SessionWatchGetOutput }>(
+          {
+            method: "GET",
+            path: `/api/session/${encodeURIComponent(input.sessionID)}/watch`,
+            successStatus: 200,
+            declaredStatuses: [400, 401, 404],
+            empty: false,
+          },
+          requestOptions,
+        ).then((value) => value.data),
+      watchSave: (input: SessionWatchSaveInput, requestOptions?: RequestOptions) =>
+        request<{ readonly data: SessionWatchSaveOutput }>(
+          {
+            method: "PUT",
+            path: `/api/session/${encodeURIComponent(input.sessionID)}/watch`,
+            body: { members: input["members"], text: input["text"], enabled: input["enabled"] },
+            successStatus: 200,
+            declaredStatuses: [400, 401, 404],
+            empty: false,
+          },
+          requestOptions,
+        ).then((value) => value.data),
+      watchRemove: (input: SessionWatchRemoveInput, requestOptions?: RequestOptions) =>
+        request<SessionWatchRemoveOutput>(
+          {
+            method: "DELETE",
+            path: `/api/session/${encodeURIComponent(input.sessionID)}/watch`,
+            successStatus: 204,
+            declaredStatuses: [400, 401, 404],
+            empty: true,
+          },
+          requestOptions,
+        ),
+      scheduleList: (input: SessionScheduleListInput, requestOptions?: RequestOptions) =>
+        request<{ readonly data: SessionScheduleListOutput }>(
+          {
+            method: "GET",
+            path: `/api/session/${encodeURIComponent(input.sessionID)}/schedule`,
+            successStatus: 200,
+            declaredStatuses: [400, 401, 404],
+            empty: false,
+          },
+          requestOptions,
+        ).then((value) => value.data),
+      scheduleCreate: (input: SessionScheduleCreateInput, requestOptions?: RequestOptions) =>
+        request<{ readonly data: SessionScheduleCreateOutput }>(
+          {
+            method: "POST",
+            path: `/api/session/${encodeURIComponent(input.sessionID)}/schedule`,
+            body: { text: input["text"], intervalMinutes: input["intervalMinutes"], enabled: input["enabled"] },
+            successStatus: 200,
+            declaredStatuses: [400, 401, 404],
+            empty: false,
+          },
+          requestOptions,
+        ).then((value) => value.data),
+      scheduleUpdate: (input: SessionScheduleUpdateInput, requestOptions?: RequestOptions) =>
+        request<{ readonly data: SessionScheduleUpdateOutput }>(
+          {
+            method: "PUT",
+            path: `/api/session/${encodeURIComponent(input.sessionID)}/schedule/${encodeURIComponent(input.scheduleID)}`,
+            body: { text: input["text"], intervalMinutes: input["intervalMinutes"], enabled: input["enabled"] },
+            successStatus: 200,
+            declaredStatuses: [400, 401, 404],
+            empty: false,
+          },
+          requestOptions,
+        ).then((value) => value.data),
+      scheduleRemove: (input: SessionScheduleRemoveInput, requestOptions?: RequestOptions) =>
+        request<SessionScheduleRemoveOutput>(
+          {
+            method: "DELETE",
+            path: `/api/session/${encodeURIComponent(input.sessionID)}/schedule/${encodeURIComponent(input.scheduleID)}`,
+            successStatus: 204,
+            declaredStatuses: [400, 401, 404],
+            empty: true,
+          },
+          requestOptions,
+        ),
       list: (input?: SessionListInput, requestOptions?: RequestOptions) =>
         request<SessionListOutput>(
           {

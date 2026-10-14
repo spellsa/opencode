@@ -18,8 +18,7 @@ const created = DateTime.makeUnsafe(0)
 const id = (value: string) => SessionMessage.ID.make(`msg_${value}`)
 const model = Model.Ref.make({ id: Model.ID.make("model"), providerID: Provider.ID.make("provider") })
 const build = Agent.defaultID
-const localTime = (hour: number, minute: number) =>
-  DateTime.makeUnsafe(new Date(2026, 8, 5, hour, minute).getTime())
+const localTime = (hour: number, minute: number) => DateTime.makeUnsafe(new Date(2026, 8, 5, hour, minute).getTime())
 
 describe("toLLMMessages", () => {
   test("background user shells enter model context only through their completion notification", () => {
@@ -56,7 +55,7 @@ describe("toLLMMessages", () => {
       Message.make({
         id: notification.id,
         role: "user",
-        content: "[2026-09-05 21:28] User shell pwd completed: /project",
+        content: '<message_metadata created_at="2026-09-05 21:28" />\n\nUser shell pwd completed: /project',
       }),
     ])
   })
@@ -75,7 +74,7 @@ describe("toLLMMessages", () => {
     expect(toLLMMessages([shell], model, model.providerID, { timestamps: true })[0]?.content).toEqual([
       {
         type: "text",
-        text: "[2026-09-05 21:28] The following shell command was executed by the user:\n\nCommand:\nlong-task\n\nOutput:\npartial output",
+        text: '<message_metadata completed_at="2026-09-05 21:28" />\n\nThe following shell command was executed by the user:\n\nCommand:\nlong-task\n\nOutput:\npartial output',
       },
     ])
   })
@@ -110,7 +109,7 @@ describe("toLLMMessages", () => {
     expect(messages.map((message) => message.id)).toEqual([id("text"), id("reasoning")])
   })
 
-  test("adds one approximate local timestamp to user and assistant text", () => {
+  test("timestamps user input as metadata and preserves assistant text", () => {
     const messages = toLLMMessages(
       [
         SessionMessage.User.make({
@@ -133,8 +132,46 @@ describe("toLLMMessages", () => {
       { timestamps: true },
     )
 
-    expect(messages[0]?.content).toEqual([{ type: "text", text: "[2026-09-05 21:20] Investigate this" }])
-    expect(messages[1]?.content).toEqual([{ type: "text", text: "[2026-09-05 21:21] I found the cause" }])
+    expect(messages[0]?.content).toEqual([
+      { type: "text", text: '<message_metadata created_at="2026-09-05 21:20" />\n\nInvestigate this' },
+    ])
+    expect(messages[1]?.content).toEqual([{ type: "text", text: "I found the cause" }])
+  })
+
+  test("keeps the timestamped history prefix stable as new input is appended", () => {
+    const history = [
+      SessionMessage.User.make({
+        id: id("stable-user"),
+        type: "user",
+        text: "Investigate this",
+        time: { created: localTime(21, 20) },
+      }),
+      SessionMessage.Assistant.make({
+        id: id("stable-assistant"),
+        type: "assistant",
+        agent: build,
+        model,
+        content: [SessionMessage.AssistantText.make({ type: "text", text: "[2026-09-05 21:21] I found the cause" })],
+        time: { created: localTime(21, 21) },
+      }),
+    ]
+    const before = toLLMMessages(history, model, model.providerID, { timestamps: true })
+    const after = toLLMMessages(
+      [
+        ...history,
+        SessionMessage.User.make({
+          id: id("next-user"),
+          type: "user",
+          text: "Continue",
+          time: { created: localTime(21, 30) },
+        }),
+      ],
+      model,
+      model.providerID,
+      { timestamps: true },
+    )
+    expect(after.slice(0, before.length)).toEqual(before)
+    expect(after[1]?.content).toEqual([{ type: "text", text: "[2026-09-05 21:21] I found the cause" }])
   })
 
   test("timestamps local, MCP, and hosted tool results at completion", () => {
@@ -192,18 +229,18 @@ describe("toLLMMessages", () => {
     expect(messages.map((message) => message.role)).toEqual(["assistant", "tool", "tool"])
     expect(messages[0]?.content.find((part) => part.type === "tool-result")?.result).toEqual({
       type: "text",
-      value: "[2026-09-05 21:27] Search result",
+      value: '<message_metadata completed_at="2026-09-05 21:27" />\n\nSearch result',
     })
     expect(messages[1]?.content[0]).toMatchObject({
       type: "tool-result",
-      result: { type: "text", value: "[2026-09-05 21:25] /project" },
+      result: { type: "text", value: '<message_metadata completed_at="2026-09-05 21:25" />\n\n/project' },
     })
     expect(messages[2]?.content[0]).toMatchObject({
       type: "tool-result",
       result: {
         type: "error",
         value: {
-          content: [{ type: "text", text: "[2026-09-05 21:26]" }],
+          content: [{ type: "text", text: '<message_metadata completed_at="2026-09-05 21:26" />' }],
         },
       },
     })
@@ -252,7 +289,7 @@ describe("toLLMMessages", () => {
       result: {
         type: "content",
         value: [
-          { type: "text", text: "[2026-09-05 21:28]" },
+          { type: "text", text: '<message_metadata completed_at="2026-09-05 21:28" />' },
           { type: "file", uri: "data:image/png;base64,aGVsbG8=", mime: "image/png" },
         ],
       },

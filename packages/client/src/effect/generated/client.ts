@@ -21,6 +21,20 @@ import type {
   PluginCheckOutput,
   PluginUpdateInput,
   PluginUpdateOutput,
+  SessionWatchGetInput,
+  SessionWatchGetOutput,
+  SessionWatchSaveInput,
+  SessionWatchSaveOutput,
+  SessionWatchRemoveInput,
+  SessionWatchRemoveOutput,
+  SessionScheduleListInput,
+  SessionScheduleListOutput,
+  SessionScheduleCreateInput,
+  SessionScheduleCreateOutput,
+  SessionScheduleUpdateInput,
+  SessionScheduleUpdateOutput,
+  SessionScheduleRemoveInput,
+  SessionScheduleRemoveOutput,
   SessionListInput,
   SessionListOutput,
   SessionStatsInput,
@@ -353,6 +367,67 @@ const adaptGroupPlugin = (raw: RawClient["server.plugin"]) => ({
   check: EndpointPluginCheck(raw),
   update: EndpointPluginUpdate(raw),
 })
+
+const EndpointSessionWatchGet = (raw: RawClient["server.session"]) => (input: SessionWatchGetInput) =>
+  preserveEffect<SessionWatchGetOutput>()(
+    raw["session.watchGet"]({ params: { sessionID: input["sessionID"] } }).pipe(
+      Effect.mapError(mapClientError),
+      Effect.map((value) => value.data),
+    ),
+  )
+
+const EndpointSessionWatchSave = (raw: RawClient["server.session"]) => (input: SessionWatchSaveInput) =>
+  preserveEffect<SessionWatchSaveOutput>()(
+    raw["session.watchSave"]({
+      params: { sessionID: input["sessionID"] },
+      payload: { members: input["members"], text: input["text"], enabled: input["enabled"] },
+    }).pipe(
+      Effect.mapError(mapClientError),
+      Effect.map((value) => value.data),
+    ),
+  )
+
+const EndpointSessionWatchRemove = (raw: RawClient["server.session"]) => (input: SessionWatchRemoveInput) =>
+  preserveEffect<SessionWatchRemoveOutput>()(
+    raw["session.watchRemove"]({ params: { sessionID: input["sessionID"] } }).pipe(Effect.mapError(mapClientError)),
+  )
+
+const EndpointSessionScheduleList = (raw: RawClient["server.session"]) => (input: SessionScheduleListInput) =>
+  preserveEffect<SessionScheduleListOutput>()(
+    raw["session.scheduleList"]({ params: { sessionID: input["sessionID"] } }).pipe(
+      Effect.mapError(mapClientError),
+      Effect.map((value) => value.data),
+    ),
+  )
+
+const EndpointSessionScheduleCreate = (raw: RawClient["server.session"]) => (input: SessionScheduleCreateInput) =>
+  preserveEffect<SessionScheduleCreateOutput>()(
+    raw["session.scheduleCreate"]({
+      params: { sessionID: input["sessionID"] },
+      payload: { text: input["text"], intervalMinutes: input["intervalMinutes"], enabled: input["enabled"] },
+    }).pipe(
+      Effect.mapError(mapClientError),
+      Effect.map((value) => value.data),
+    ),
+  )
+
+const EndpointSessionScheduleUpdate = (raw: RawClient["server.session"]) => (input: SessionScheduleUpdateInput) =>
+  preserveEffect<SessionScheduleUpdateOutput>()(
+    raw["session.scheduleUpdate"]({
+      params: { sessionID: input["sessionID"], scheduleID: input["scheduleID"] },
+      payload: { text: input["text"], intervalMinutes: input["intervalMinutes"], enabled: input["enabled"] },
+    }).pipe(
+      Effect.mapError(mapClientError),
+      Effect.map((value) => value.data),
+    ),
+  )
+
+const EndpointSessionScheduleRemove = (raw: RawClient["server.session"]) => (input: SessionScheduleRemoveInput) =>
+  preserveEffect<SessionScheduleRemoveOutput>()(
+    raw["session.scheduleRemove"]({ params: { sessionID: input["sessionID"], scheduleID: input["scheduleID"] } }).pipe(
+      Effect.mapError(mapClientError),
+    ),
+  )
 
 const EndpointSessionList = (raw: RawClient["server.session"]) => (input?: SessionListInput) =>
   preserveEffect<SessionListOutput>()(
@@ -718,6 +793,13 @@ const EndpointSessionView = (raw: RawClient["server.session"]) => (input: Sessio
   )
 
 const adaptGroupSession = (raw: RawClient["server.session"]) => ({
+  watchGet: EndpointSessionWatchGet(raw),
+  watchSave: EndpointSessionWatchSave(raw),
+  watchRemove: EndpointSessionWatchRemove(raw),
+  scheduleList: EndpointSessionScheduleList(raw),
+  scheduleCreate: EndpointSessionScheduleCreate(raw),
+  scheduleUpdate: EndpointSessionScheduleUpdate(raw),
+  scheduleRemove: EndpointSessionScheduleRemove(raw),
   list: EndpointSessionList(raw),
   stats: EndpointSessionStats(raw),
   create: EndpointSessionCreate(raw),

@@ -20,6 +20,17 @@ export type PluginFeatures = { server?: true; tui?: true; rpc?: true }
 
 export type PluginState = { status: "active" } | { status: "failed"; error: string; ref?: string }
 
+export type SessionWatchInfo = { members: Array<string>; text: string; enabled: boolean; sessionID: string }
+
+export type SessionScheduleInfo = {
+  text: string
+  intervalMinutes: number
+  enabled: boolean
+  id: string
+  sessionID: string
+  nextAt: number | null
+}
+
 export type SessionForkBoundary = { type: "before"; messageID: string } | { type: "through"; messageID: string }
 
 export type MoneyUSD = number
@@ -2407,10 +2418,6 @@ export type ServiceUnavailableError = {
 export const isServiceUnavailableError = (value: unknown): value is ServiceUnavailableError =>
   typeof value === "object" && value !== null && "_tag" in value && value["_tag"] === "ServiceUnavailableError"
 
-export type InvalidCursorError = { readonly _tag: "InvalidCursorError"; readonly message: string }
-export const isInvalidCursorError = (value: unknown): value is InvalidCursorError =>
-  typeof value === "object" && value !== null && "_tag" in value && value["_tag"] === "InvalidCursorError"
-
 export type SessionNotFoundError = {
   readonly _tag: "SessionNotFoundError"
   readonly sessionID: string
@@ -2418,6 +2425,10 @@ export type SessionNotFoundError = {
 }
 export const isSessionNotFoundError = (value: unknown): value is SessionNotFoundError =>
   typeof value === "object" && value !== null && "_tag" in value && value["_tag"] === "SessionNotFoundError"
+
+export type InvalidCursorError = { readonly _tag: "InvalidCursorError"; readonly message: string }
+export const isInvalidCursorError = (value: unknown): value is InvalidCursorError =>
+  typeof value === "object" && value !== null && "_tag" in value && value["_tag"] === "InvalidCursorError"
 
 export type ConflictError = {
   readonly _tag: "ConflictError"
@@ -2655,6 +2666,69 @@ export type PluginUpdateInput = {
 }
 
 export type PluginUpdateOutput = void
+
+export type SessionWatchGetInput = { readonly sessionID: { readonly sessionID: string }["sessionID"] }
+
+export type SessionWatchGetOutput = { data: SessionWatchInfo | null }["data"]
+
+export type SessionWatchSaveInput = {
+  readonly sessionID: { readonly sessionID: string }["sessionID"]
+  readonly members: {
+    readonly members: ReadonlyArray<string>
+    readonly text: string
+    readonly enabled: boolean
+  }["members"]
+  readonly text: { readonly members: ReadonlyArray<string>; readonly text: string; readonly enabled: boolean }["text"]
+  readonly enabled: {
+    readonly members: ReadonlyArray<string>
+    readonly text: string
+    readonly enabled: boolean
+  }["enabled"]
+}
+
+export type SessionWatchSaveOutput = { data: SessionWatchInfo }["data"]
+
+export type SessionWatchRemoveInput = { readonly sessionID: { readonly sessionID: string }["sessionID"] }
+
+export type SessionWatchRemoveOutput = void
+
+export type SessionScheduleListInput = { readonly sessionID: { readonly sessionID: string }["sessionID"] }
+
+export type SessionScheduleListOutput = { data: Array<SessionScheduleInfo> }["data"]
+
+export type SessionScheduleCreateInput = {
+  readonly sessionID: { readonly sessionID: string }["sessionID"]
+  readonly text: { readonly text: string; readonly intervalMinutes: number; readonly enabled: boolean }["text"]
+  readonly intervalMinutes: {
+    readonly text: string
+    readonly intervalMinutes: number
+    readonly enabled: boolean
+  }["intervalMinutes"]
+  readonly enabled: { readonly text: string; readonly intervalMinutes: number; readonly enabled: boolean }["enabled"]
+}
+
+export type SessionScheduleCreateOutput = { data: SessionScheduleInfo }["data"]
+
+export type SessionScheduleUpdateInput = {
+  readonly sessionID: { readonly sessionID: string; readonly scheduleID: string }["sessionID"]
+  readonly scheduleID: { readonly sessionID: string; readonly scheduleID: string }["scheduleID"]
+  readonly text: { readonly text: string; readonly intervalMinutes: number; readonly enabled: boolean }["text"]
+  readonly intervalMinutes: {
+    readonly text: string
+    readonly intervalMinutes: number
+    readonly enabled: boolean
+  }["intervalMinutes"]
+  readonly enabled: { readonly text: string; readonly intervalMinutes: number; readonly enabled: boolean }["enabled"]
+}
+
+export type SessionScheduleUpdateOutput = { data: SessionScheduleInfo }["data"]
+
+export type SessionScheduleRemoveInput = {
+  readonly sessionID: { readonly sessionID: string; readonly scheduleID: string }["sessionID"]
+  readonly scheduleID: { readonly sessionID: string; readonly scheduleID: string }["scheduleID"]
+}
+
+export type SessionScheduleRemoveOutput = void
 
 export type SessionListInput = {
   readonly workspace?: {

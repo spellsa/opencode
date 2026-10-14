@@ -41,6 +41,8 @@ export interface DialogSelectProps<T> {
   current?: T
   focusCurrent?: boolean
   sectionNavigation?: boolean
+  /** Multiplies the dialog's list height. Defaults to 1. */
+  heightScale?: number
 }
 
 type DialogSelectActionBase<T> = {
@@ -234,7 +236,11 @@ export function DialogSelect<T>(props: DialogSelectProps<T>) {
   })
 
   const dimensions = useTerminalDimensions()
-  const height = createMemo(() => Math.min(rows(), Math.floor(dimensions().height / 2) - 6))
+  const height = createMemo(() => {
+    const available = Math.floor(dimensions().height / 2) - 6
+    const scaled = props.heightScale === undefined ? available : Math.floor(available * props.heightScale)
+    return Math.min(rows(), Math.max(1, scaled))
+  })
 
   const selected = createMemo(() => flat()[store.selected])
 

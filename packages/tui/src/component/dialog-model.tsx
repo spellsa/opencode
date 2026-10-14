@@ -9,12 +9,14 @@ import { useConnected } from "./use-connected"
 import { useData } from "../context/data"
 import { modelPreferenceKey } from "../model-preference"
 import { useLocation } from "../context/location"
+import { useToast } from "../ui/toast"
 
 export function DialogModel(props: { providerID?: string }) {
   const local = useLocal()
   const data = useData()
   const dialog = useDialog()
   const location = useLocation()
+  const toast = useToast()
   const [query, setQuery] = createSignal("")
   const favoritePriority = new Set(local.model.favorite().map(modelPreferenceKey))
 
@@ -125,6 +127,7 @@ export function DialogModel(props: { providerID?: string }) {
 
   function onSelect(providerID: string, modelID: string) {
     local.model.set({ providerID, modelID }, { recent: true })
+    void local.model.commit().catch(toast.error)
     const list = local.model.variant.list()
     const cur = local.model.variant.current()
     if (cur && list.includes(cur)) {

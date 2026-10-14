@@ -6,6 +6,7 @@ import { App } from "../../app.js"
 import { Credential } from "../../credential.js"
 import { Bus } from "../../bus.js"
 import { Integration } from "../../integration.js"
+import { Model } from "../../model.js"
 import { OauthCallbackPage } from "../../oauth/page.js"
 import { Provider } from "../../provider.js"
 import type { PluginInternal } from "../internal.js"
@@ -274,7 +275,7 @@ export const OpenAIPlugin = define({
             return
           }
           const apiID = draft.modelID ?? draft.id
-          const match = apiID.match(/^gpt-(\d+\.\d+)/)
+          const match = apiID.match(/^gpt-(\d+(?:\.\d+)?)/)
           if (
             !codexAllowed.has(apiID) &&
             (codexDisallowed.has(apiID) || !match || Number.parseFloat(match[1]) <= 5.4)
@@ -285,6 +286,23 @@ export const OpenAIPlugin = define({
           draft.cost = []
           // Match Codex CLI so context consumption and subscription usage stay consistent between clients.
           draft.limit = { ...draft.limit, context: 400_000, input: 272_000 }
+        })
+      }
+      // ChatGPT OAuth also serves the long-context GPT-5.6 tiers. Expose opt-in
+      // `-1m` catalog entries that keep the same API model but raise the limit.
+      for (const model of Array.from(item.models.values())) {
+        const apiID = model.modelID ?? model.id
+        if (!model.enabled || !/^gpt-5\.6-(sol|terra|luna)(-fast)?$/.test(apiID)) continue
+        const id = Model.ID.make(`${model.id}-1m`)
+        if (item.models.has(id)) continue
+        evt.model.update(item.provider.id, id, (draft) => {
+          Object.assign(draft, structuredClone(model))
+          draft.id = id
+          draft.modelID = apiID
+          draft.name = `${model.name} 1M`
+          draft.limit = { context: 1_000_000, input: 872_000, output: 128_000 }
+          draft.cost = []
+          draft.enabled = true
         })
       }
     })

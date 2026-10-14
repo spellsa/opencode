@@ -1,7 +1,7 @@
 import { createStore } from "solid-js/store"
 import { dedupeWith } from "effect/Array"
 import { createSimpleContext } from "./helper"
-import { batch, createMemo, onCleanup } from "solid-js"
+import { batch, createEffect, createMemo, onCleanup } from "solid-js"
 import { useEvent } from "./event"
 import path from "path"
 import { useTuiPaths } from "./runtime"
@@ -22,6 +22,7 @@ import { useRoute } from "./route"
 import { useData } from "./data"
 import { usePermission } from "./permission"
 import { useLocation } from "./location"
+import { useClient } from "./client"
 import { parse } from "../util/model"
 
 export function recentModels(model: ModelPreferenceModel, recent: ModelPreferenceModel[]) {
@@ -50,6 +51,26 @@ export const { use: useLocal, provider: LocalProvider } = createSimpleContext({
     const event = useEvent()
     const permission = usePermission()
     const location = useLocation()
+    const client = useClient()
+
+    const autoApproved = new Set<string>()
+    createEffect(() => {
+      if (permission.mode !== "auto" || client.connection.status() !== "connected") return
+      void Promise.allSettled(data.session.list().map((session) => data.session.permission.sync(session.id)))
+    })
+    createEffect(() => {
+      if (permission.mode !== "auto" || client.connection.status() !== "connected") return
+      data.session.permission.list()?.forEach((request) => {
+        if (autoApproved.has(request.id)) return
+        autoApproved.add(request.id)
+        void data.session.permission
+          .reply({ sessionID: request.sessionID, reply: "once", requestID: request.id })
+          .catch((error) => {
+            autoApproved.delete(request.id)
+            toast.error(error)
+          })
+      })
+    })
 
     const models = () => data.location.model.list(location.ref)
     const providers = () => data.location.provider.list(location.ref)
@@ -298,7 +319,9 @@ export const { use: useLocal, provider: LocalProvider } = createSimpleContext({
         const session = data.session.get(sessionID)
         const selected = [
           selectionState.selectionBySessionAgent[sessionID]?.[current.id],
-          !session?.agent || session.agent === current.id ? durableSelection(sessionID) : undefined,
+          !session?.agent || session.agent === current.id || session.parentID !== undefined
+            ? durableSelection(sessionID)
+            : undefined,
         ].find((selection) => selection && isModelValid(selection))
         if (selected) {
           const info = models()?.find((item) => item.providerID === selected.providerID && item.id === selected.modelID)
@@ -326,7 +349,7 @@ export const { use: useLocal, provider: LocalProvider } = createSimpleContext({
         setSessionSelection(
           sessionID,
           current.id,
-          (!session?.agent || session.agent === current.id) &&
+          (!session?.agent || session.agent === current.id || session.parentID !== undefined) &&
             durable &&
             selectionKey(durable) === selectionKey(selection)
             ? undefined
@@ -383,6 +406,19 @@ export const { use: useLocal, provider: LocalProvider } = createSimpleContext({
       return {
         current: currentModel,
         selection: currentSelection,
+        async commit() {
+          if (route.data.type !== "session") return
+          const sessionID = route.data.sessionID
+          const selection = currentSelection()
+          const current = agent.current()
+          if (!selection || !current) return
+          const value = { providerID: selection.providerID, id: selection.modelID, variant: selection.variant }
+          const cancel = model.trackSessionCommit(sessionID, value, current.id)
+          await client.api.session.switchModel({ sessionID, model: value }).catch((error) => {
+            cancel()
+            throw error
+          })
+        },
         remember() {
           const current = agent.current()
           const selection = currentSelection()

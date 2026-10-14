@@ -56,6 +56,7 @@ import { DataProvider, useData } from "./context/data"
 import { SessionTabsProvider, useSessionTabs } from "./context/session-tabs"
 import { LocationProvider, useLocation } from "./context/location"
 import { LocalProvider, useLocal } from "./context/local"
+import { SubagentTeamsProvider } from "./context/subagent-teams"
 import { PermissionProvider } from "./context/permission"
 import { DialogModel } from "./component/dialog-model"
 import { useConnected } from "./component/use-connected"
@@ -68,6 +69,7 @@ import { DialogThemeList } from "./component/dialog-theme-list"
 import { DialogHelp } from "./ui/dialog-help"
 import { DialogAgent } from "./component/dialog-agent"
 import { DialogSessionList } from "./component/dialog-session-list"
+import { DialogCodex } from "./component/dialog-codex"
 import { DialogOpen, DialogOpenKey, moveOpenSession } from "./component/dialog-open"
 import { SessionTabs } from "./component/session-tabs"
 import { clampSessionTabsWidth, sessionTabsFitVertically, SESSION_SIDEBAR_WIDTH } from "./ui/layout"
@@ -389,41 +391,43 @@ export const run = Effect.fn("Tui.run")(function* (input: TuiInput) {
                                                         >
                                                           <ThemeErrorToast />
                                                           <LocalProvider>
-                                                            <PromptStashProvider>
-                                                              <DialogProvider>
-                                                                <FrecencyProvider>
-                                                                  <PromptHistoryProvider>
-                                                                    <PromptRefProvider>
-                                                                      <EditorContextProvider>
-                                                                        <AttentionProvider>
-                                                                          <UpdateNotificationProvider
-                                                                            updater={input.updater}
-                                                                          >
-                                                                            <PanelProvider>
-                                                                              <PluginProvider
-                                                                                packages={input.packages}
-                                                                                directories={pluginDirectories}
-                                                                              >
-                                                                                <App
-                                                                                  pair={
-                                                                                    input.server.endpoint.auth
-                                                                                      ? input.server.endpoint.auth
-                                                                                      : {
-                                                                                          username: "opencode",
-                                                                                          password: "",
-                                                                                        }
-                                                                                  }
-                                                                                />
-                                                                              </PluginProvider>
-                                                                            </PanelProvider>
-                                                                          </UpdateNotificationProvider>
-                                                                        </AttentionProvider>
-                                                                      </EditorContextProvider>
-                                                                    </PromptRefProvider>
-                                                                  </PromptHistoryProvider>
-                                                                </FrecencyProvider>
-                                                              </DialogProvider>
-                                                            </PromptStashProvider>
+                                                            <SubagentTeamsProvider>
+                                                              <PromptStashProvider>
+                                                                <DialogProvider>
+                                                                  <FrecencyProvider>
+                                                                    <PromptHistoryProvider>
+                                                                      <PromptRefProvider>
+                                                                        <EditorContextProvider>
+                                                                          <AttentionProvider>
+                                                                            <UpdateNotificationProvider
+                                                                              updater={input.updater}
+                                                                            >
+                                                                              <PanelProvider>
+                                                                                <PluginProvider
+                                                                                  packages={input.packages}
+                                                                                  directories={pluginDirectories}
+                                                                                >
+                                                                                  <App
+                                                                                    pair={
+                                                                                      input.server.endpoint.auth
+                                                                                        ? input.server.endpoint.auth
+                                                                                        : {
+                                                                                            username: "opencode",
+                                                                                            password: "",
+                                                                                          }
+                                                                                    }
+                                                                                  />
+                                                                                </PluginProvider>
+                                                                              </PanelProvider>
+                                                                            </UpdateNotificationProvider>
+                                                                          </AttentionProvider>
+                                                                        </EditorContextProvider>
+                                                                      </PromptRefProvider>
+                                                                    </PromptHistoryProvider>
+                                                                  </FrecencyProvider>
+                                                                </DialogProvider>
+                                                              </PromptStashProvider>
+                                                            </SubagentTeamsProvider>
                                                           </LocalProvider>
                                                         </ThemeProvider>
                                                       </SessionTerminalsProvider>
@@ -713,6 +717,13 @@ function App(props: { pair?: DialogPairCredentials }) {
         run: () => {
           dialog.replace(() => <DialogSessionList />)
         },
+      },
+      {
+        name: "session.codex",
+        title: "Open Codex session",
+        category: "Session",
+        slash: { name: "codex" },
+        run: () => dialog.replace(() => <DialogCodex />),
       },
       {
         name: "session.new",

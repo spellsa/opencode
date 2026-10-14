@@ -11,6 +11,7 @@ import { SessionInbox } from "./inbox.js"
 import { SessionMessage } from "./message.js"
 import { SessionSchema } from "./schema.js"
 import { SessionTable } from "./sql.js"
+import { SessionTeam } from "./team.js"
 
 export const continuation = (objective: string) => `現在のゴール:
 ${objective}
@@ -27,7 +28,7 @@ export interface Interface {
   readonly set: (sessionID: SessionSchema.ID, objective: string) => Effect.Effect<void, Error>
   readonly status: (sessionID: SessionSchema.ID, status: SessionGoal.Status) => Effect.Effect<void, Error>
   readonly clear: (sessionID: SessionSchema.ID) => Effect.Effect<void>
-  readonly enqueue: (sessionID: SessionSchema.ID) => Effect.Effect<boolean>
+  readonly enqueue: (sessionID: SessionSchema.ID, active?: ReadonlySet<SessionSchema.ID>) => Effect.Effect<boolean>
 }
 
 export class Service extends Context.Service<Service, Interface>()("@opencode/SessionGoal") {}
@@ -38,6 +39,7 @@ export const layer = Layer.effect(
     const db = (yield* Database.Service).db
     const bus = yield* Bus.Service
     const inbox = yield* SessionInbox.Service
+    const teams = yield* SessionTeam.Service
     const get = Effect.fn("SessionGoal.get")(function* (sessionID: SessionSchema.ID) {
       const row = yield* db
         .select({ goal: SessionTable.goal })
@@ -87,12 +89,24 @@ export const layer = Layer.effect(
             yield* bus.publish(SessionEvent.GoalCleared, { sessionID })
           }),
         ),
-      enqueue: (sessionID) =>
+      enqueue: (sessionID, active) =>
         SessionInbox.serialized(
           sessionID,
           Effect.gen(function* () {
             const goal = yield* get(sessionID)
             if (goal?.status !== "active" || (yield* SessionInbox.has(db, sessionID, "input"))) return false
+            const membership = yield* teams.membership(sessionID)
+            const members = membership
+              ? yield* teams.roster(membership)
+              : (yield* teams.teamsOf(sessionID)).flatMap((team) => team.entries)
+            if (members.length > 0) {
+              // Team goals resume only after the execution coordinator observes the whole team idle.
+              if (!active || active.has(sessionID)) return false
+              for (const member of members) {
+                if (active.has(member.sessionID) || (yield* SessionInbox.has(db, member.sessionID, "input")))
+                  return false
+              }
+            }
             yield* inbox
               .admit({
                 sessionID,
@@ -115,4 +129,8 @@ export const layer = Layer.effect(
   }),
 )
 
-export const node = makeGlobalNode({ service: Service, layer, deps: [Database.node, Bus.node, SessionInbox.node] })
+export const node = makeGlobalNode({
+  service: Service,
+  layer,
+  deps: [Database.node, Bus.node, SessionInbox.node, SessionTeam.node],
+})

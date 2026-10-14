@@ -1,4 +1,5 @@
 import { expect, test } from "bun:test"
+import { InputRenderable } from "@opentui/core"
 import { DialogVariant } from "../../src/component/dialog-variant"
 import { agent, model, renderLocal } from "../fixture/local"
 
@@ -9,7 +10,12 @@ test("variant picker can explicitly reset an agent variant", async () => {
   })
   expect(setup.local.model.variant.current()).toBe("high")
   setup.dialog.replace(() => <DialogVariant />)
-  await setup.waitForFrame((frame) => frame.includes("Select variant") && frame.includes("Default"))
+  await setup.waitForFrame(
+    (frame) =>
+      frame.includes("Select variant") &&
+      frame.includes("Default") &&
+      setup.renderer.currentFocusedRenderable instanceof InputRenderable,
+  )
   await setup.mockInput.typeText("Default")
   await setup.renderOnce()
   setup.mockInput.pressEnter()

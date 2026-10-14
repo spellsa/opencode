@@ -26,14 +26,14 @@ const env = {
 const CHANNEL = await (async () => {
   if (env.OPENCODE_CHANNEL) return env.OPENCODE_CHANNEL
   if (env.OPENCODE_BUMP) return "latest"
-  if (env.OPENCODE_VERSION && !env.OPENCODE_VERSION.startsWith("0.0.0-")) return "latest"
+  if (env.OPENCODE_VERSION && semver.prerelease(env.OPENCODE_VERSION) === null) return "latest"
   return await $`git branch --show-current`.text().then((x) => x.trim())
 })()
 const IS_PREVIEW = CHANNEL !== "latest"
 
 const VERSION = await (async () => {
   if (env.OPENCODE_VERSION) return env.OPENCODE_VERSION
-  if (IS_PREVIEW) return `0.0.0-${CHANNEL}-${previewBuildNumber()}`
+  if (IS_PREVIEW) return `2.0.0-${CHANNEL}-${previewBuildNumber()}`
   const version = await fetch("https://registry.npmjs.org/@opencode-ai%2fcli/latest")
     .then((res) => {
       if (!res.ok) throw new Error(res.statusText)

@@ -3,8 +3,8 @@ import type { Effect, Stream } from "effect"
 import type { Location } from "@opencode-ai/schema/location"
 import type { Agent } from "@opencode-ai/schema/agent"
 import type { Plugin } from "@opencode-ai/schema/plugin"
-import type { Workspace } from "@opencode-ai/schema/workspace"
 import type { Session } from "@opencode-ai/schema/session"
+import type { Workspace } from "@opencode-ai/schema/workspace"
 import type { AbsolutePath } from "@opencode-ai/schema/schema"
 import type { Project } from "@opencode-ai/schema/project"
 import type { RelativePath } from "@opencode-ai/schema/schema"
@@ -116,6 +116,95 @@ export interface PluginApi<E = never> {
   readonly check: PluginCheckOperation<E>
   readonly update: PluginUpdateOperation<E>
 }
+
+export type SessionWatchGetInput = { readonly sessionID: Session.ID }
+export type SessionWatchGetOutput = {
+  readonly members: ReadonlyArray<Session.ID>
+  readonly text: string
+  readonly enabled: boolean
+  readonly sessionID: Session.ID
+} | null
+export type SessionWatchGetOperation<E = never> = (
+  input: SessionWatchGetInput,
+) => Effect.Effect<SessionWatchGetOutput, E>
+
+export type SessionWatchSaveInput = {
+  readonly sessionID: Session.ID
+  readonly members: ReadonlyArray<Session.ID>
+  readonly text: string
+  readonly enabled: boolean
+}
+export type SessionWatchSaveOutput = {
+  readonly members: ReadonlyArray<Session.ID>
+  readonly text: string
+  readonly enabled: boolean
+  readonly sessionID: Session.ID
+}
+export type SessionWatchSaveOperation<E = never> = (
+  input: SessionWatchSaveInput,
+) => Effect.Effect<SessionWatchSaveOutput, E>
+
+export type SessionWatchRemoveInput = { readonly sessionID: Session.ID }
+export type SessionWatchRemoveOutput = void
+export type SessionWatchRemoveOperation<E = never> = (
+  input: SessionWatchRemoveInput,
+) => Effect.Effect<SessionWatchRemoveOutput, E>
+
+export type SessionScheduleListInput = { readonly sessionID: Session.ID }
+export type SessionScheduleListOutput = ReadonlyArray<{
+  readonly text: string
+  readonly intervalMinutes: number
+  readonly enabled: boolean
+  readonly id: string
+  readonly sessionID: Session.ID
+  readonly nextAt: number | null
+}>
+export type SessionScheduleListOperation<E = never> = (
+  input: SessionScheduleListInput,
+) => Effect.Effect<SessionScheduleListOutput, E>
+
+export type SessionScheduleCreateInput = {
+  readonly sessionID: Session.ID
+  readonly text: string
+  readonly intervalMinutes: number
+  readonly enabled: boolean
+}
+export type SessionScheduleCreateOutput = {
+  readonly text: string
+  readonly intervalMinutes: number
+  readonly enabled: boolean
+  readonly id: string
+  readonly sessionID: Session.ID
+  readonly nextAt: number | null
+}
+export type SessionScheduleCreateOperation<E = never> = (
+  input: SessionScheduleCreateInput,
+) => Effect.Effect<SessionScheduleCreateOutput, E>
+
+export type SessionScheduleUpdateInput = {
+  readonly sessionID: Session.ID
+  readonly scheduleID: string
+  readonly text: string
+  readonly intervalMinutes: number
+  readonly enabled: boolean
+}
+export type SessionScheduleUpdateOutput = {
+  readonly text: string
+  readonly intervalMinutes: number
+  readonly enabled: boolean
+  readonly id: string
+  readonly sessionID: Session.ID
+  readonly nextAt: number | null
+}
+export type SessionScheduleUpdateOperation<E = never> = (
+  input: SessionScheduleUpdateInput,
+) => Effect.Effect<SessionScheduleUpdateOutput, E>
+
+export type SessionScheduleRemoveInput = { readonly sessionID: Session.ID; readonly scheduleID: string }
+export type SessionScheduleRemoveOutput = void
+export type SessionScheduleRemoveOperation<E = never> = (
+  input: SessionScheduleRemoveInput,
+) => Effect.Effect<SessionScheduleRemoveOutput, E>
 
 export type SessionListInput = {
   readonly workspace?: Workspace.ID | undefined
@@ -1117,6 +1206,13 @@ export type SessionViewOutput = void
 export type SessionViewOperation<E = never> = (input: SessionViewInput) => Effect.Effect<SessionViewOutput, E>
 
 export interface SessionApi<E = never> {
+  readonly watchGet: SessionWatchGetOperation<E>
+  readonly watchSave: SessionWatchSaveOperation<E>
+  readonly watchRemove: SessionWatchRemoveOperation<E>
+  readonly scheduleList: SessionScheduleListOperation<E>
+  readonly scheduleCreate: SessionScheduleCreateOperation<E>
+  readonly scheduleUpdate: SessionScheduleUpdateOperation<E>
+  readonly scheduleRemove: SessionScheduleRemoveOperation<E>
   readonly list: SessionListOperation<E>
   readonly stats: SessionStatsOperation<E>
   readonly create: SessionCreateOperation<E>
