@@ -123,6 +123,17 @@ describe("OpenAIPlugin", () => {
         catalog.model.update(Provider.ID.openai, Model.ID.make("gpt-6-astra"), (model) => {
           model.limit = { context: 1_050_000, input: 922_000, output: 128_000 }
         })
+        catalog.model.update(Provider.ID.openai, Model.ID.make("gpt-6-sol"), () => {})
+        catalog.model.update(Provider.ID.openai, Model.ID.make("gpt-6-luna"), (model) => {
+          model.name = "GPT-6 Luna"
+          model.limit = { context: 1_050_000, input: 922_000, output: 128_000 }
+        })
+        catalog.model.update(Provider.ID.openai, Model.ID.make("gpt-6-luna-fast"), (model) => {
+          model.name = "GPT-6 Luna Fast"
+          model.modelID = Model.ID.make("gpt-6-luna")
+          model.body = { service_tier: "priority" }
+          model.limit = { context: 1_050_000, input: 922_000, output: 128_000 }
+        })
         catalog.model.update(Provider.ID.openai, Model.ID.make("gpt-4.1"), () => {})
       })
       yield* credentials.create({
@@ -176,10 +187,28 @@ describe("OpenAIPlugin", () => {
       expect(luna1m.modelID).toBe(Model.ID.make("gpt-5.6-luna"))
       expect(luna1m.name).toBe("gpt-5.6-luna 1M")
       expect(luna1m.limit).toEqual({ context: 1_000_000, input: 872_000, output: 128_000 })
-      expect(
-        required(yield* catalog.model.get(Provider.ID.openai, Model.ID.make("gpt-5.6-sol-1m"))).limit,
-      ).toEqual({ context: 1_000_000, input: 872_000, output: 128_000 })
+      expect(required(yield* catalog.model.get(Provider.ID.openai, Model.ID.make("gpt-5.6-sol-1m"))).limit).toEqual({
+        context: 1_000_000,
+        input: 872_000,
+        output: 128_000,
+      })
       expect(yield* catalog.model.get(Provider.ID.openai, Model.ID.make("gpt-5.5-1m"))).toBeUndefined()
+      expect(required(yield* catalog.model.get(Provider.ID.openai, Model.ID.make("gpt-6-sol"))).enabled).toBe(true)
+      const luna6 = required(yield* catalog.model.get(Provider.ID.openai, Model.ID.make("gpt-6-luna")))
+      const longLuna = required(yield* catalog.model.get(Provider.ID.openai, Model.ID.make("gpt-6-luna-1m")))
+      expect(luna6.limit).toEqual({ context: 400_000, input: 272_000, output: 128_000 })
+      expect(longLuna.name).toBe("GPT-6 Luna (1M)")
+      expect(longLuna.modelID).toBe(Model.ID.make("gpt-6-luna"))
+      expect(longLuna.limit).toEqual({ context: 1_050_000, input: 922_000, output: 128_000 })
+      expect(longLuna.enabled).toBe(true)
+      const fastLuna = required(yield* catalog.model.get(Provider.ID.openai, Model.ID.make("gpt-6-luna-fast")))
+      const longFastLuna = required(yield* catalog.model.get(Provider.ID.openai, Model.ID.make("gpt-6-luna-fast-1m")))
+      expect(fastLuna.limit).toEqual({ context: 400_000, input: 272_000, output: 128_000 })
+      expect(longFastLuna.name).toBe("GPT-6 Luna Fast (1M)")
+      expect(longFastLuna.modelID).toBe(Model.ID.make("gpt-6-luna"))
+      expect(longFastLuna.body).toEqual({ service_tier: "priority" })
+      expect(longFastLuna.limit).toEqual({ context: 1_050_000, input: 922_000, output: 128_000 })
+      expect(longFastLuna.enabled).toBe(true)
       expect(required(yield* catalog.model.get(Provider.ID.openai, Model.ID.make("gpt-4.1"))).enabled).toBe(false)
       const astra = required(yield* catalog.model.get(Provider.ID.openai, Model.ID.make("gpt-6-astra")))
       expect(astra.enabled).toBe(true)
