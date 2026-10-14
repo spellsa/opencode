@@ -1,7 +1,7 @@
-export * as SessionWatch from "./session-watch"
+export * as SessionWatch from "./session-watch.js"
 
 import { Schema } from "effect"
-import { Session } from "./session"
+import { Session } from "./session.js"
 
 export const Input = Schema.Struct({
   members: Schema.Array(Session.ID).check(Schema.isMinLength(1)),

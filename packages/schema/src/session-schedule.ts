@@ -1,8 +1,8 @@
-export * as SessionSchedule from "./session-schedule"
+export * as SessionSchedule from "./session-schedule.js"
 
 import { Schema } from "effect"
-import { PositiveInt } from "./schema"
-import { Session } from "./session"
+import { PositiveInt } from "./schema.js"
+import { Session } from "./session.js"
 
 export const Input = Schema.Struct({
   text: Schema.String.check(Schema.isPattern(/\S/)),
