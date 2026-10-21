@@ -15,6 +15,16 @@ import type {
   PluginCheckOutput,
   PluginUpdateInput,
   PluginUpdateOutput,
+  SessionGoalGetInput,
+  SessionGoalGetOutput,
+  SessionGoalSaveInput,
+  SessionGoalSaveOutput,
+  SessionGoalRemoveInput,
+  SessionGoalRemoveOutput,
+  SessionContextLimitGetInput,
+  SessionContextLimitGetOutput,
+  SessionContextLimitSetInput,
+  SessionContextLimitSetOutput,
   SessionWatchGetInput,
   SessionWatchGetOutput,
   SessionWatchSaveInput,
@@ -526,6 +536,68 @@ export function make(options: ClientOptions) {
         ),
     },
     session: {
+      goalGet: (input: SessionGoalGetInput, requestOptions?: RequestOptions) =>
+        request<{ readonly data: SessionGoalGetOutput }>(
+          {
+            method: "GET",
+            path: `/api/session/${encodeURIComponent(input.sessionID)}/goal`,
+            successStatus: 200,
+            declaredStatuses: [400, 401, 404],
+            empty: false,
+          },
+          requestOptions,
+        ).then((value) => value.data),
+      goalSave: (input: SessionGoalSaveInput, requestOptions?: RequestOptions) =>
+        request<SessionGoalSaveOutput>(
+          {
+            method: "PUT",
+            path: `/api/session/${encodeURIComponent(input.sessionID)}/goal`,
+            body: {
+              objective: input["objective"],
+              status: input["status"],
+              reason: input["reason"],
+              awaitingApproval: input["awaitingApproval"],
+            },
+            successStatus: 204,
+            declaredStatuses: [400, 401, 404],
+            empty: true,
+          },
+          requestOptions,
+        ),
+      goalRemove: (input: SessionGoalRemoveInput, requestOptions?: RequestOptions) =>
+        request<SessionGoalRemoveOutput>(
+          {
+            method: "DELETE",
+            path: `/api/session/${encodeURIComponent(input.sessionID)}/goal`,
+            successStatus: 204,
+            declaredStatuses: [400, 401, 404],
+            empty: true,
+          },
+          requestOptions,
+        ),
+      contextLimitGet: (input: SessionContextLimitGetInput, requestOptions?: RequestOptions) =>
+        request<{ readonly data: SessionContextLimitGetOutput }>(
+          {
+            method: "GET",
+            path: `/api/session/${encodeURIComponent(input.sessionID)}/context-limit`,
+            successStatus: 200,
+            declaredStatuses: [400, 401, 404],
+            empty: false,
+          },
+          requestOptions,
+        ).then((value) => value.data),
+      contextLimitSet: (input: SessionContextLimitSetInput, requestOptions?: RequestOptions) =>
+        request<SessionContextLimitSetOutput>(
+          {
+            method: "PUT",
+            path: `/api/session/${encodeURIComponent(input.sessionID)}/context-limit`,
+            body: { tokens: input["tokens"] },
+            successStatus: 204,
+            declaredStatuses: [400, 401, 404],
+            empty: true,
+          },
+          requestOptions,
+        ),
       watchGet: (input: SessionWatchGetInput, requestOptions?: RequestOptions) =>
         request<{ readonly data: SessionWatchGetOutput }>(
           {

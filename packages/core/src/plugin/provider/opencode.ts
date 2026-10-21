@@ -9,6 +9,7 @@ import { Integration } from "../../integration.js"
 import { Provider } from "../../provider.js"
 import { ConfigProvider } from "@opencode-ai/schema/config/provider"
 import { Money } from "@opencode-ai/schema/money"
+import { aliasRequest, aliasResponse } from "./opencode-free.js"
 
 const defaultServer = "https://opencode.ai/console"
 const clientID = "opencode-cli"
@@ -85,6 +86,28 @@ export const OpencodePlugin = define<HttpClient.HttpClient | Bus.Service | Scope
     const bus = yield* Bus.Service
     const http = yield* HttpClient.HttpClient
     const loading = Semaphore.makeUnsafe(1)
+    const aliases = new WeakSet<Request>()
+    yield* ctx.session.hook(
+      "http.request",
+      (event) =>
+        Effect.gen(function* () {
+          if (!event.model.id.endsWith("-free")) return
+          const request = yield* Effect.promise(() => aliasRequest(event.request))
+          if (!request) return
+          aliases.add(request)
+          event.request = request
+        }),
+      { providerID: Provider.ID.opencode },
+    )
+    yield* ctx.session.hook(
+      "http.response",
+      (event) =>
+        Effect.gen(function* () {
+          if (!aliases.has(event.request)) return
+          event.response = yield* Effect.promise(() => aliasResponse(event.response))
+        }),
+      { providerID: Provider.ID.opencode },
+    )
     let connected = false
     let providers: typeof RemoteResponse.Type.providers | undefined
 

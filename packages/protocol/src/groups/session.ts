@@ -6,6 +6,7 @@ import { Session } from "@opencode-ai/schema/session"
 import { SessionStats } from "@opencode-ai/schema/session-stats"
 import { SessionSchedule } from "@opencode-ai/schema/session-schedule"
 import { SessionWatch } from "@opencode-ai/schema/session-watch"
+import { SessionGoal } from "@opencode-ai/schema/session-goal"
 import { InstructionEntry } from "@opencode-ai/schema/instruction-entry"
 import { Project } from "@opencode-ai/schema/project"
 import { AbsolutePath, NonNegativeInt, PositiveInt, RelativePath, statics } from "@opencode-ai/schema/schema"
@@ -129,6 +130,52 @@ export const SessionsQuery = Schema.Struct({
 
 export const makeSessionGroup = <I extends HttpApiMiddleware.AnyId, S>(sessionLocationMiddleware: Context.Key<I, S>) =>
   HttpApiGroup.make("server.session")
+    .add(
+      HttpApiEndpoint.get("session.goalGet", "/api/session/:sessionID/goal", {
+        params: { sessionID: Session.ID },
+        success: Schema.Struct({ data: SessionGoal.Monitor }),
+        error: SessionNotFoundError,
+      }).annotateMerge(OpenApi.annotations({ identifier: "v2.session.goalGet", summary: "Get session goal" })),
+    )
+    .add(
+      HttpApiEndpoint.put("session.goalSave", "/api/session/:sessionID/goal", {
+        params: { sessionID: Session.ID },
+        payload: SessionGoal.Update,
+        success: HttpApiSchema.NoContent,
+        error: [SessionNotFoundError, InvalidRequestError],
+      }).annotateMerge(
+        OpenApi.annotations({ identifier: "v2.session.goalSave", summary: "Set or update session goal" }),
+      ),
+    )
+    .add(
+      HttpApiEndpoint.delete("session.goalRemove", "/api/session/:sessionID/goal", {
+        params: { sessionID: Session.ID },
+        success: HttpApiSchema.NoContent,
+        error: SessionNotFoundError,
+      }).annotateMerge(OpenApi.annotations({ identifier: "v2.session.goalRemove", summary: "Remove session goal" })),
+    )
+    .add(
+      HttpApiEndpoint.get("session.contextLimitGet", "/api/session/:sessionID/context-limit", {
+        params: { sessionID: Session.ID },
+        success: Schema.Struct({ data: Schema.NullOr(Schema.Number) }),
+        error: [SessionNotFoundError],
+      }).annotateMerge(
+        OpenApi.annotations({ identifier: "v2.session.contextLimitGet", summary: "Get session context limit" }),
+      ),
+    )
+    .add(
+      HttpApiEndpoint.put("session.contextLimitSet", "/api/session/:sessionID/context-limit", {
+        params: { sessionID: Session.ID },
+        payload: Schema.Struct({ tokens: Schema.NullOr(Schema.Int.check(Schema.isGreaterThanOrEqualTo(1000))) }),
+        success: HttpApiSchema.NoContent,
+        error: [SessionNotFoundError],
+      }).annotateMerge(
+        OpenApi.annotations({
+          identifier: "v2.session.contextLimitSet",
+          summary: "Set or reset session context limit",
+        }),
+      ),
+    )
     .add(
       HttpApiEndpoint.get("session.watchGet", "/api/session/:sessionID/watch", {
         params: { sessionID: Session.ID },

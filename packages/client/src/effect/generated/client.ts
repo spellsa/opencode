@@ -21,6 +21,16 @@ import type {
   PluginCheckOutput,
   PluginUpdateInput,
   PluginUpdateOutput,
+  SessionGoalGetInput,
+  SessionGoalGetOutput,
+  SessionGoalSaveInput,
+  SessionGoalSaveOutput,
+  SessionGoalRemoveInput,
+  SessionGoalRemoveOutput,
+  SessionContextLimitGetInput,
+  SessionContextLimitGetOutput,
+  SessionContextLimitSetInput,
+  SessionContextLimitSetOutput,
   SessionWatchGetInput,
   SessionWatchGetOutput,
   SessionWatchSaveInput,
@@ -367,6 +377,48 @@ const adaptGroupPlugin = (raw: RawClient["server.plugin"]) => ({
   check: EndpointPluginCheck(raw),
   update: EndpointPluginUpdate(raw),
 })
+
+const EndpointSessionGoalGet = (raw: RawClient["server.session"]) => (input: SessionGoalGetInput) =>
+  preserveEffect<SessionGoalGetOutput>()(
+    raw["session.goalGet"]({ params: { sessionID: input["sessionID"] } }).pipe(
+      Effect.mapError(mapClientError),
+      Effect.map((value) => value.data),
+    ),
+  )
+
+const EndpointSessionGoalSave = (raw: RawClient["server.session"]) => (input: SessionGoalSaveInput) =>
+  preserveEffect<SessionGoalSaveOutput>()(
+    raw["session.goalSave"]({
+      params: { sessionID: input["sessionID"] },
+      payload: {
+        objective: input["objective"],
+        status: input["status"],
+        reason: input["reason"],
+        awaitingApproval: input["awaitingApproval"],
+      },
+    }).pipe(Effect.mapError(mapClientError)),
+  )
+
+const EndpointSessionGoalRemove = (raw: RawClient["server.session"]) => (input: SessionGoalRemoveInput) =>
+  preserveEffect<SessionGoalRemoveOutput>()(
+    raw["session.goalRemove"]({ params: { sessionID: input["sessionID"] } }).pipe(Effect.mapError(mapClientError)),
+  )
+
+const EndpointSessionContextLimitGet = (raw: RawClient["server.session"]) => (input: SessionContextLimitGetInput) =>
+  preserveEffect<SessionContextLimitGetOutput>()(
+    raw["session.contextLimitGet"]({ params: { sessionID: input["sessionID"] } }).pipe(
+      Effect.mapError(mapClientError),
+      Effect.map((value) => value.data),
+    ),
+  )
+
+const EndpointSessionContextLimitSet = (raw: RawClient["server.session"]) => (input: SessionContextLimitSetInput) =>
+  preserveEffect<SessionContextLimitSetOutput>()(
+    raw["session.contextLimitSet"]({
+      params: { sessionID: input["sessionID"] },
+      payload: { tokens: input["tokens"] },
+    }).pipe(Effect.mapError(mapClientError)),
+  )
 
 const EndpointSessionWatchGet = (raw: RawClient["server.session"]) => (input: SessionWatchGetInput) =>
   preserveEffect<SessionWatchGetOutput>()(
@@ -793,6 +845,11 @@ const EndpointSessionView = (raw: RawClient["server.session"]) => (input: Sessio
   )
 
 const adaptGroupSession = (raw: RawClient["server.session"]) => ({
+  goalGet: EndpointSessionGoalGet(raw),
+  goalSave: EndpointSessionGoalSave(raw),
+  goalRemove: EndpointSessionGoalRemove(raw),
+  contextLimitGet: EndpointSessionContextLimitGet(raw),
+  contextLimitSet: EndpointSessionContextLimitSet(raw),
   watchGet: EndpointSessionWatchGet(raw),
   watchSave: EndpointSessionWatchSave(raw),
   watchRemove: EndpointSessionWatchRemove(raw),

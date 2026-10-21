@@ -20,6 +20,13 @@ export type PluginFeatures = { server?: true; tui?: true; rpc?: true }
 
 export type PluginState = { status: "active" } | { status: "failed"; error: string; ref?: string }
 
+export type SessionGoal = {
+  objective: string
+  status: "active" | "paused" | "blocked" | "complete"
+  reason?: string
+  awaitingApproval?: boolean
+}
+
 export type SessionWatchInfo = { members: Array<string>; text: string; enabled: boolean; sessionID: string }
 
 export type SessionScheduleInfo = {
@@ -45,8 +52,6 @@ export type TokenUsageInfo = {
 export type LocationRef = { directory: string; workspaceID?: string }
 
 export type SessionMetadata = { [x: string]: JsonValue }
-
-export type SessionGoal = { objective: string; status: "active" | "paused" | "complete" }
 
 export type FileDiffInfo = {
   file: string
@@ -455,6 +460,8 @@ export type PermissionRule = { action: string; resource: string; effect: Permiss
 
 export type PluginInfo = { id?: string; source: PluginSource; features: PluginFeatures; state: PluginState }
 
+export type SessionGoalMonitor = { goal: SessionGoal | null; continuationCount: number; approvalWaits: number }
+
 export type SessionMessageLocationSwitched = {
   id: string
   metadata?: { [x: string]: JsonValue }
@@ -606,6 +613,16 @@ export type SessionGoalSet = {
   data: { sessionID: string; objective: string }
 }
 
+export type SessionGoalEdited = {
+  id: string
+  created: number
+  metadata?: { [x: string]: any }
+  type: "session.goal.edited"
+  durable: { aggregateID: string; seq: number; version: 1 }
+  location?: LocationRef
+  data: { sessionID: string; objective: string }
+}
+
 export type SessionGoalStatusChanged = {
   id: string
   created: number
@@ -613,7 +630,12 @@ export type SessionGoalStatusChanged = {
   type: "session.goal.status_changed"
   durable: { aggregateID: string; seq: number; version: 1 }
   location?: LocationRef
-  data: { sessionID: string; status: "active" | "paused" | "complete" }
+  data: {
+    sessionID: string
+    status: "active" | "paused" | "blocked" | "complete"
+    reason?: string
+    awaitingApproval?: boolean
+  }
 }
 
 export type SessionGoalCleared = {
@@ -2238,6 +2260,7 @@ export type SessionMessagesResponse = {
 export type SessionEventDurable =
   | SessionCreated
   | SessionGoalSet
+  | SessionGoalEdited
   | SessionGoalStatusChanged
   | SessionGoalCleared
   | SessionAgentSelected
@@ -2300,6 +2323,7 @@ export type V2Event =
   | AgentUpdated
   | SessionCreated
   | SessionGoalSet
+  | SessionGoalEdited
   | SessionGoalStatusChanged
   | SessionGoalCleared
   | SessionAgentSelected
@@ -2667,6 +2691,55 @@ export type PluginUpdateInput = {
 
 export type PluginUpdateOutput = void
 
+export type SessionGoalGetInput = { readonly sessionID: { readonly sessionID: string }["sessionID"] }
+
+export type SessionGoalGetOutput = { data: SessionGoalMonitor }["data"]
+
+export type SessionGoalSaveInput = {
+  readonly sessionID: { readonly sessionID: string }["sessionID"]
+  readonly objective?: {
+    readonly objective?: string
+    readonly status?: "active" | "paused" | "blocked" | "complete"
+    readonly reason?: string
+    readonly awaitingApproval?: boolean
+  }["objective"]
+  readonly status?: {
+    readonly objective?: string
+    readonly status?: "active" | "paused" | "blocked" | "complete"
+    readonly reason?: string
+    readonly awaitingApproval?: boolean
+  }["status"]
+  readonly reason?: {
+    readonly objective?: string
+    readonly status?: "active" | "paused" | "blocked" | "complete"
+    readonly reason?: string
+    readonly awaitingApproval?: boolean
+  }["reason"]
+  readonly awaitingApproval?: {
+    readonly objective?: string
+    readonly status?: "active" | "paused" | "blocked" | "complete"
+    readonly reason?: string
+    readonly awaitingApproval?: boolean
+  }["awaitingApproval"]
+}
+
+export type SessionGoalSaveOutput = void
+
+export type SessionGoalRemoveInput = { readonly sessionID: { readonly sessionID: string }["sessionID"] }
+
+export type SessionGoalRemoveOutput = void
+
+export type SessionContextLimitGetInput = { readonly sessionID: { readonly sessionID: string }["sessionID"] }
+
+export type SessionContextLimitGetOutput = { data: number | null }["data"]
+
+export type SessionContextLimitSetInput = {
+  readonly sessionID: { readonly sessionID: string }["sessionID"]
+  readonly tokens: { readonly tokens: number | null }["tokens"]
+}
+
+export type SessionContextLimitSetOutput = void
+
 export type SessionWatchGetInput = { readonly sessionID: { readonly sessionID: string }["sessionID"] }
 
 export type SessionWatchGetOutput = { data: SessionWatchInfo | null }["data"]
@@ -2960,7 +3033,12 @@ export type SessionImportInput = {
       readonly location: { readonly directory: string; readonly workspaceID?: string }
       readonly subpath?: string
       readonly metadata?: { readonly [x: string]: JsonValue }
-      readonly goal?: { readonly objective: string; readonly status: "active" | "paused" | "complete" }
+      readonly goal?: {
+        readonly objective: string
+        readonly status: "active" | "paused" | "blocked" | "complete"
+        readonly reason?: string
+        readonly awaitingApproval?: boolean
+      }
       readonly revert?: {
         readonly messageID: string
         readonly partID?: string
@@ -3240,7 +3318,12 @@ export type SessionImportInput = {
       readonly location: { readonly directory: string; readonly workspaceID?: string }
       readonly subpath?: string
       readonly metadata?: { readonly [x: string]: JsonValue }
-      readonly goal?: { readonly objective: string; readonly status: "active" | "paused" | "complete" }
+      readonly goal?: {
+        readonly objective: string
+        readonly status: "active" | "paused" | "blocked" | "complete"
+        readonly reason?: string
+        readonly awaitingApproval?: boolean
+      }
       readonly revert?: {
         readonly messageID: string
         readonly partID?: string
@@ -3520,7 +3603,12 @@ export type SessionImportInput = {
       readonly location: { readonly directory: string; readonly workspaceID?: string }
       readonly subpath?: string
       readonly metadata?: { readonly [x: string]: JsonValue }
-      readonly goal?: { readonly objective: string; readonly status: "active" | "paused" | "complete" }
+      readonly goal?: {
+        readonly objective: string
+        readonly status: "active" | "paused" | "blocked" | "complete"
+        readonly reason?: string
+        readonly awaitingApproval?: boolean
+      }
       readonly revert?: {
         readonly messageID: string
         readonly partID?: string

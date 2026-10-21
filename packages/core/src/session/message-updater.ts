@@ -65,6 +65,7 @@ export function update(adapter: Adapter, event: SessionEvent.DurableEvent) {
     Match.discriminatorsExhaustive("type")({
       "session.created": () => Effect.void,
       "session.goal.set": () => Effect.void,
+      "session.goal.edited": () => Effect.void,
       "session.goal.status_changed": () => Effect.void,
       "session.goal.cleared": () => Effect.void,
       "session.viewed": () => Effect.void,

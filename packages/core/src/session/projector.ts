@@ -445,7 +445,21 @@ const layer = Layer.effectDiscard(
     yield* bus.project(SessionEvent.GoalStatusChanged, (event) =>
       db
         .update(SessionTable)
-        .set({ goal: sql`json_set(${SessionTable.goal}, '$.status', ${event.data.status})` })
+        .set({
+          goal: sql`json_patch(${SessionTable.goal}, ${JSON.stringify({
+            status: event.data.status,
+            reason: event.data.reason ?? null,
+            awaitingApproval: event.data.awaitingApproval ?? null,
+          })})`,
+        })
+        .where(eq(SessionTable.id, event.data.sessionID))
+        .run()
+        .pipe(Effect.orDie),
+    )
+    yield* bus.project(SessionEvent.GoalEdited, (event) =>
+      db
+        .update(SessionTable)
+        .set({ goal: sql`json_set(${SessionTable.goal}, '$.objective', ${event.data.objective})` })
         .where(eq(SessionTable.id, event.data.sessionID))
         .run()
         .pipe(Effect.orDie),

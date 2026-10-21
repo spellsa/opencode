@@ -117,6 +117,49 @@ export interface PluginApi<E = never> {
   readonly update: PluginUpdateOperation<E>
 }
 
+export type SessionGoalGetInput = { readonly sessionID: Session.ID }
+export type SessionGoalGetOutput = {
+  readonly goal: {
+    readonly objective: string
+    readonly status: "active" | "paused" | "blocked" | "complete"
+    readonly reason?: string
+    readonly awaitingApproval?: boolean
+  } | null
+  readonly continuationCount: number
+  readonly approvalWaits: number
+}
+export type SessionGoalGetOperation<E = never> = (input: SessionGoalGetInput) => Effect.Effect<SessionGoalGetOutput, E>
+
+export type SessionGoalSaveInput = {
+  readonly sessionID: Session.ID
+  readonly objective?: string
+  readonly status?: "active" | "paused" | "blocked" | "complete"
+  readonly reason?: string
+  readonly awaitingApproval?: boolean
+}
+export type SessionGoalSaveOutput = void
+export type SessionGoalSaveOperation<E = never> = (
+  input: SessionGoalSaveInput,
+) => Effect.Effect<SessionGoalSaveOutput, E>
+
+export type SessionGoalRemoveInput = { readonly sessionID: Session.ID }
+export type SessionGoalRemoveOutput = void
+export type SessionGoalRemoveOperation<E = never> = (
+  input: SessionGoalRemoveInput,
+) => Effect.Effect<SessionGoalRemoveOutput, E>
+
+export type SessionContextLimitGetInput = { readonly sessionID: Session.ID }
+export type SessionContextLimitGetOutput = number | null
+export type SessionContextLimitGetOperation<E = never> = (
+  input: SessionContextLimitGetInput,
+) => Effect.Effect<SessionContextLimitGetOutput, E>
+
+export type SessionContextLimitSetInput = { readonly sessionID: Session.ID; readonly tokens: number | null }
+export type SessionContextLimitSetOutput = void
+export type SessionContextLimitSetOperation<E = never> = (
+  input: SessionContextLimitSetInput,
+) => Effect.Effect<SessionContextLimitSetOutput, E>
+
 export type SessionWatchGetInput = { readonly sessionID: Session.ID }
 export type SessionWatchGetOutput = {
   readonly members: ReadonlyArray<Session.ID>
@@ -542,10 +585,24 @@ export type SessionLogOutput =
           readonly id: Event.ID
           readonly created: number
           readonly metadata?: { readonly [x: string]: unknown } | undefined
+          readonly type: "session.goal.edited"
+          readonly durable: { readonly aggregateID: string; readonly seq: Event.Seq; readonly version: Event.Version }
+          readonly location?: Location.Ref | undefined
+          readonly data: { readonly sessionID: Session.ID; readonly objective: string }
+        }
+      | {
+          readonly id: Event.ID
+          readonly created: number
+          readonly metadata?: { readonly [x: string]: unknown } | undefined
           readonly type: "session.goal.status_changed"
           readonly durable: { readonly aggregateID: string; readonly seq: Event.Seq; readonly version: Event.Version }
           readonly location?: Location.Ref | undefined
-          readonly data: { readonly sessionID: Session.ID; readonly status: "active" | "paused" | "complete" }
+          readonly data: {
+            readonly sessionID: Session.ID
+            readonly status: "active" | "paused" | "blocked" | "complete"
+            readonly reason?: string
+            readonly awaitingApproval?: boolean
+          }
         }
       | {
           readonly id: Event.ID
@@ -1206,6 +1263,11 @@ export type SessionViewOutput = void
 export type SessionViewOperation<E = never> = (input: SessionViewInput) => Effect.Effect<SessionViewOutput, E>
 
 export interface SessionApi<E = never> {
+  readonly goalGet: SessionGoalGetOperation<E>
+  readonly goalSave: SessionGoalSaveOperation<E>
+  readonly goalRemove: SessionGoalRemoveOperation<E>
+  readonly contextLimitGet: SessionContextLimitGetOperation<E>
+  readonly contextLimitSet: SessionContextLimitSetOperation<E>
   readonly watchGet: SessionWatchGetOperation<E>
   readonly watchSave: SessionWatchSaveOperation<E>
   readonly watchRemove: SessionWatchRemoveOperation<E>

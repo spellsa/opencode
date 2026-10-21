@@ -56,7 +56,17 @@ export const GoalSet = Event.durable({
 export const GoalStatusChanged = Event.durable({
   type: "session.goal.status_changed",
   ...options,
-  schema: { ...Base, status: SessionGoal.Status },
+  schema: {
+    ...Base,
+    status: SessionGoal.Status,
+    reason: Schema.optionalKey(Schema.String),
+    awaitingApproval: Schema.optionalKey(Schema.Boolean),
+  },
+})
+export const GoalEdited = Event.durable({
+  type: "session.goal.edited",
+  ...options,
+  schema: { ...Base, objective: SessionGoal.Info.fields.objective },
 })
 export const GoalCleared = Event.durable({
   type: "session.goal.cleared",
@@ -640,6 +650,7 @@ export namespace RevertEvent {
 export const Definitions = Event.inventory(
   Created,
   GoalSet,
+  GoalEdited,
   GoalStatusChanged,
   GoalCleared,
   AgentSelected,

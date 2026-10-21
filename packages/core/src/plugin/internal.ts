@@ -61,10 +61,6 @@ import { Snapshot } from "../snapshot.js"
 import { Skill } from "../skill.js"
 import { SkillDiscovery } from "../skill/discovery.js"
 import { Watcher } from "../filesystem/watcher.js"
-import { PatchTool } from "../tool/plugin/patch.js"
-import { EditTool } from "../tool/plugin/edit.js"
-import { GlobTool } from "../tool/plugin/glob.js"
-import { GrepTool } from "../tool/plugin/grep.js"
 import { OpenCodeTools } from "../tool/plugin/opencode.js"
 import { QuestionTool } from "../tool/plugin/question.js"
 import { ReadToolFileSystem } from "../tool/read-filesystem.js"
@@ -82,7 +78,6 @@ import { ToolOutput } from "../tool-output.js"
 import { WebFetchTool } from "../tool/plugin/webfetch.js"
 import { WebSearchTool } from "../tool/plugin/websearch.js"
 import { WellKnown } from "../wellknown.js"
-import { WriteTool } from "../tool/plugin/write.js"
 import { AgentPlugin } from "./agent.js"
 import { CommandPlugin } from "./command.js"
 import { PlanPlugin } from "./plan.js"
@@ -217,10 +212,6 @@ const pre = [
   ModelsDevPlugin,
   ...ProviderPlugins,
   ...WebSearchPlugins,
-  PatchTool.Plugin,
-  EditTool.Plugin,
-  GlobTool.Plugin,
-  GrepTool.Plugin,
   OpenCodeTools.Plugin,
   QuestionTool.Plugin,
   ReadTool.Plugin,
@@ -230,7 +221,6 @@ const pre = [
   TeamTool.Plugin,
   WebFetchTool.Plugin,
   WebSearchTool.Plugin,
-  WriteTool.Plugin,
   WarmingPlugin.Plugin,
 ] as const satisfies readonly InternalPlugin[]
 

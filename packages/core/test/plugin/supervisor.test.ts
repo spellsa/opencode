@@ -11,6 +11,9 @@ import { Instance } from "@opencode-ai/core/instance"
 import { LocationServiceMap } from "@opencode-ai/core/location-services"
 import { Location } from "@opencode-ai/core/location"
 import { Plugin } from "@opencode-ai/core/plugin"
+import { Tool } from "@opencode-ai/core/tool"
+import { Session } from "@opencode-ai/schema/session"
+import { toolIdentity } from "../lib/tool"
 import { SdkPlugins } from "@opencode-ai/core/plugin/sdk"
 import { AbsolutePath } from "@opencode-ai/core/schema"
 import { Database } from "../../src/database/database"
@@ -77,6 +80,39 @@ const it = testEffect(
 )
 
 describe("PluginSupervisor", () => {
+  it.live("omits shell-replaced builtin tools from direct and Code Mode execution", () =>
+    Effect.gen(function* () {
+      const directory = yield* tmpdirScoped()
+      const locations = yield* LocationServiceMap.Service
+      yield* Effect.gen(function* () {
+        const plugins = yield* Plugin.Service
+        yield* plugins.awaitActivation
+        const tools = yield* Tool.Service
+        const snapshot = yield* tools.snapshot()
+        const names = snapshot.definitions.map((tool) => tool.name)
+        expect(names).toContain("read")
+        expect(names).toContain("shell")
+        for (const name of ["glob", "grep", "edit", "write", "patch"]) {
+          expect(names).not.toContain(name)
+          const input = {
+            sessionID: Session.ID.make("ses_hidden_tools"),
+            ...toolIdentity,
+            call: { type: "tool-call" as const, id: `call-${name}`, name, input: {} },
+          }
+          expect((yield* snapshot.execute(input).pipe(Effect.flip)).message).toBe(`Unknown tool: ${name}`)
+          const result = yield* snapshot.execute({
+            ...input,
+            call: { ...input.call, name: "execute", input: { code: `return await tools.${name}({})` } },
+          })
+          expect(result.output).toMatchObject({ error: true })
+        }
+      }).pipe(
+        Effect.scoped,
+        Effect.provide(locations.get(Location.Ref.make({ directory: AbsolutePath.make(directory.path) }))),
+      )
+    }),
+  )
+
   it.live("reports a duplicate plugin ID as a failure without dropping the generation", () =>
     Effect.gen(function* () {
       const sdk = yield* SdkPlugins.Service

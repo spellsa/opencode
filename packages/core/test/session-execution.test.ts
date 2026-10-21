@@ -28,6 +28,7 @@ import { SessionStore } from "@opencode-ai/core/session/store"
 import { Cause, Context, Deferred, Effect, Exit, Fiber, Layer, LayerMap, Scope } from "effect"
 import { eq } from "drizzle-orm"
 import { testEffect } from "./lib/effect"
+import { TestClock } from "effect/testing"
 
 const it = testEffect(
   AppNodeBuilder.build(
@@ -47,6 +48,62 @@ const it = testEffect(
 )
 
 describe("SessionExecution lifecycle", () => {
+  it.effect("goal edits append notifications; the sliding limit pauses and resume resets counters", () =>
+    Effect.gen(function* () {
+      const database = yield* Database.Service
+      const goals = yield* SessionGoal.Service
+      const inbox = yield* SessionInbox.Service
+      const bus = yield* Bus.Service
+      const store = yield* SessionStore.Service
+      const id = Session.ID.make("ses_goal_limit")
+      yield* seedSessions(database, [id])
+      yield* goals.set(id, "First objective")
+      const original = yield* store.context(id)
+      yield* goals.update(id, { objective: "Second objective" })
+      const edited = yield* store.context(id)
+      expect(edited.slice(0, original.length)).toEqual(original)
+      expect(edited.at(-1)).toMatchObject({ text: expect.stringContaining("+ Second objective") })
+      const cycle = Effect.gen(function* () {
+        expect(yield* goals.enqueue(id)).toBe(true)
+        for (const item of yield* inbox.list(id))
+          yield* bus.publish(SessionEvent.InboxCancelled, { sessionID: id, inboxID: item.id })
+      })
+      yield* Effect.repeat(cycle, { times: 48 })
+      expect((yield* goals.get(id))?.status).toBe("active")
+      yield* TestClock.adjust("10 minutes")
+      yield* cycle
+      expect((yield* goals.inspect(id)).continuationCount).toBe(1)
+      yield* Effect.repeat(cycle, { times: 48 })
+      expect((yield* goals.get(id))?.status).toBe("paused")
+      expect(yield* goals.enqueue(id)).toBe(false)
+      yield* goals.status(id, "active")
+      expect((yield* goals.inspect(id)).continuationCount).toBe(0)
+    }),
+  )
+
+  it.effect("three consecutive approval waits block the goal", () =>
+    Effect.gen(function* () {
+      const database = yield* Database.Service
+      const goals = yield* SessionGoal.Service
+      const inbox = yield* SessionInbox.Service
+      const bus = yield* Bus.Service
+      const id = Session.ID.make("ses_goal_approval")
+      yield* seedSessions(database, [id])
+      yield* goals.set(id, "Finish")
+      yield* goals.update(id, { awaitingApproval: true, reason: "Waiting for approval" })
+      for (let index = 0; index < 3; index++) {
+        expect(yield* goals.enqueue(id)).toBe(true)
+        for (const item of yield* inbox.list(id))
+          yield* bus.publish(SessionEvent.InboxCancelled, { sessionID: id, inboxID: item.id })
+      }
+      expect((yield* goals.get(id))?.status).toBe("blocked")
+      expect((yield* goals.inspect(id)).approvalWaits).toBe(3)
+      expect(yield* goals.enqueue(id)).toBe(false)
+      yield* goals.status(id, "active")
+      expect((yield* goals.inspect(id)).approvalWaits).toBe(0)
+      expect((yield* goals.get(id))?.awaitingApproval).toBeUndefined()
+    }),
+  )
   it.effect("watch notifies and wakes its receiver on completion, failure and user interruption", () =>
     Effect.gen(function* () {
       const database = yield* Database.Service

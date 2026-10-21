@@ -38,6 +38,8 @@ import { expandPastedTextPlaceholders, expandTrackedPastedText } from "../../pro
 import { usePromptStash } from "../../prompt/stash"
 import { DialogStash } from "../dialog-stash"
 import { DialogSchedule } from "../dialog-schedule"
+import { DialogContextLimit } from "../dialog-context-limit"
+import { DialogGoal } from "../dialog-goal"
 import { DialogWatch } from "../dialog-watch"
 import { type AutocompleteOption, type AutocompleteRef, Autocomplete } from "./autocomplete"
 import { useRenderer, useTerminalDimensions, type JSX } from "@opentui/solid"
@@ -614,6 +616,58 @@ export function Prompt(props: PromptProps) {
               }}
             />
           ))
+        },
+      },
+      {
+        title: "ゴール",
+        name: "session.goal",
+        category: "Session",
+        slash: { name: "goal" },
+        run: async () => {
+          if (props.sessionID) {
+            dialog.replace(() => <DialogGoal sessionID={props.sessionID!} />)
+            return
+          }
+          const selection = local.model.selection()
+          const created = data.session.create({
+            location: currentLocation.ref ?? data.location.default(),
+            agent: local.agent.current()?.id,
+            model: selection
+              ? { providerID: selection.providerID, id: selection.modelID, variant: local.model.variant.current() }
+              : undefined,
+          })
+          await created.request
+            .then(() => {
+              route.navigate({ type: "session", sessionID: created.id })
+              dialog.replace(() => <DialogGoal sessionID={created.id} />)
+            })
+            .catch(toast.error)
+        },
+      },
+      {
+        title: "総コンテキスト上限",
+        name: "session.context-limit",
+        category: "Session",
+        slash: { name: "context" },
+        run: async () => {
+          if (props.sessionID) {
+            dialog.replace(() => <DialogContextLimit sessionID={props.sessionID!} />)
+            return
+          }
+          const selection = local.model.selection()
+          const created = data.session.create({
+            location: currentLocation.ref ?? data.location.default(),
+            agent: local.agent.current()?.id,
+            model: selection
+              ? { providerID: selection.providerID, id: selection.modelID, variant: local.model.variant.current() }
+              : undefined,
+          })
+          await created.request
+            .then(() => {
+              route.navigate({ type: "session", sessionID: created.id })
+              dialog.replace(() => <DialogContextLimit sessionID={created.id} />)
+            })
+            .catch(toast.error)
         },
       },
       {

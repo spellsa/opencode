@@ -28,6 +28,9 @@ import { ModelsDev } from "@opencode-ai/core/models-dev"
 import { SessionRestart } from "@opencode-ai/core/session/execution/restart"
 import { SessionSchedule } from "@opencode-ai/core/session/schedule"
 import { SessionWatch } from "@opencode-ai/core/session/watch"
+import { SessionContextLimit } from "@opencode-ai/core/session/context-limit"
+import { SessionGoal } from "@opencode-ai/core/session/goal"
+import { SessionExecution } from "@opencode-ai/core/session/execution"
 import { PluginUpdate } from "@opencode-ai/core/plugin/update"
 import { SdkPlugins } from "@opencode-ai/core/plugin/sdk"
 import { WellKnown } from "@opencode-ai/core/wellknown"
@@ -73,6 +76,9 @@ const applicationServiceNodes = [
   SessionRestart.node,
   SessionSchedule.node,
   SessionWatch.node,
+  SessionContextLimit.node,
+  SessionGoal.node,
+  SessionExecution.node,
   Workspace.node,
 ] as const
 const applicationServices = LayerNode.group(applicationServiceNodes)

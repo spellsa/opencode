@@ -592,10 +592,7 @@ scenario("goal continues after a text response and stops on update_goal", functi
   yield* GoalPlugin.Plugin.effect(
     host({
       command: {
-        list: () =>
-          commands
-            .list()
-            .pipe(Effect.map((data) => ({ location: host().location, data }))),
+        list: () => commands.list().pipe(Effect.map((data) => ({ location: host().location, data }))),
         transform: commands.transform,
         reload: commands.reload,
       },
@@ -607,15 +604,17 @@ scenario("goal continues after a text response and stops on update_goal", functi
       session: { hook: (name, callback) => hooks.register("session", name, callback) },
     }),
   )
-  yield* goals.set(sessionID, "テストを通す")
   yield* s.admit("Work on the goal")
   yield* s.llm.push(
+    TestLLM.tool("goal-create", "create_goal", { objective: "最初のゴール" }),
+    TestLLM.tool("goal-read", "get_goal", {}),
+    TestLLM.tool("goal-edit", "update_goal", { objective: "テストを通す" }),
     TestLLM.text("Still working", "goal-progress"),
     TestLLM.tool("goal-complete", "update_goal", { status: "complete" }),
     TestLLM.text("Verified", "goal-done"),
   )
   yield* s.resume
-  expect(s.requests).toHaveLength(3)
+  expect(s.requests).toHaveLength(6)
   expect(yield* goals.get(sessionID)).toEqual({ objective: "テストを通す", status: "complete" })
   expect(
     (yield* s.context).some(
@@ -626,15 +625,24 @@ scenario("goal continues after a text response and stops on update_goal", functi
 
   yield* goals.status(sessionID, "active")
   expect(yield* goals.enqueue(sessionID)).toBe(true)
-  yield* commands.execute({ name: "goal", invocation: { sessionID, prompt: { text: "pause" }, delivery: "steer" } })
+  yield* goals.status(sessionID, "paused")
   expect((yield* goals.get(sessionID))?.status).toBe("paused")
   expect(yield* s.inbox).toEqual([])
   expect(yield* goals.enqueue(sessionID)).toBe(false)
   yield* goals.status(sessionID, "active")
   expect(yield* goals.enqueue(sessionID)).toBe(true)
-  yield* commands.execute({ name: "goal", invocation: { sessionID, prompt: { text: "clear" }, delivery: "steer" } })
+  yield* goals.clear(sessionID)
   expect(yield* goals.get(sessionID)).toBeUndefined()
   expect(yield* s.inbox).toEqual([])
+  expect((yield* commands.list()).some((command) => command.name === "goal")).toBe(false)
+  expect(s.requests.at(-1)?.system).toEqual(s.requests[0].system)
+  expect(
+    s.requests.every(
+      (request) =>
+        JSON.stringify(request.messages.slice(0, s.requests[0].messages.length)) ===
+        JSON.stringify(s.requests[0].messages),
+    ),
+  ).toBe(true)
 })
 
 // Subscribe before resuming; model requests can arrive before retry backoff is scheduled.
