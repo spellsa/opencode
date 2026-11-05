@@ -42,3 +42,30 @@ jobs:
           name: opencode2-${{ matrix.name }}
           path: opencode2-${{ matrix.name }}.tar.gz
           if-no-files-found: error
+
+  release:
+    name: Publish preview release
+    if: github.ref == 'refs/heads/v2-custom'
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          pattern: opencode2-*
+          merge-multiple: true
+          path: artifacts
+      - name: Publish release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          tag="preview-${GITHUB_SHA:0:12}"
+          if gh release view "$tag" >/dev/null 2>&1; then
+            gh release upload "$tag" artifacts/*.tar.gz --clobber
+          else
+            gh release create "$tag" artifacts/*.tar.gz --target "$GITHUB_SHA" --prerelease \
+              --title "OpenCode2 preview ${GITHUB_SHA:0:12}" \
+              --notes "Build for commit $GITHUB_SHA."
+          fi
