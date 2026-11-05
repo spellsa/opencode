@@ -1,0 +1,42 @@
+name: Build OpenCode2
+
+on:
+  push:
+    branches: [v2-custom]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: Build ${{ matrix.name }}
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: linux-x64
+            runner: ubuntu-latest
+          - name: linux-arm64
+            runner: ubuntu-24.04-arm
+          - name: windows-x64
+            runner: windows-latest
+          - name: macos-x64
+            runner: macos-15-intel
+          - name: macos-arm64
+            runner: macos-latest
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+      - uses: ./.github/actions/setup-bun
+      - name: Build CLI with web UI
+        working-directory: packages/cli
+        run: bun run script/build.ts --single --skip-install
+      - name: Archive binary
+        shell: bash
+        run: tar -czf opencode2-${{ matrix.name }}.tar.gz -C packages/cli/dist .
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: opencode2-${{ matrix.name }}
+          path: opencode2-${{ matrix.name }}.tar.gz
+          if-no-files-found: error

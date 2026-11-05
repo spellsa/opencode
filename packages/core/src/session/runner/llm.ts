@@ -29,6 +29,7 @@ import { SessionStep } from "./step.js"
 import { ToolOutput } from "../../tool-output.js"
 import { Plugin } from "../../plugin.js"
 import { MAX_STEPS_PROMPT } from "./max-steps.js"
+import { SessionShellBatch } from "../shell-batch.js"
 
 const CONTINUE_AFTER_INCOMPLETE_STREAM =
   "The previous response was interrupted. Continue from where you left off without repeating completed content."
@@ -217,13 +218,16 @@ const layer = Layer.effect(
           continue
         }
         const stepLimitReached = loaded.agent.info.steps !== undefined && step >= loaded.agent.info.steps
-        const transcript = SessionModelRequest.baseTranscript({
-          agent: loaded.agent.info,
-          model: loaded.model,
-          tools: loaded.tools,
-          initial: loaded.initial,
-          messages: loaded.messages,
-        })
+        const transcript = SessionShellBatch.prepare(
+          SessionModelRequest.baseTranscript({
+            agent: loaded.agent.info,
+            model: loaded.model,
+            tools: loaded.tools,
+            initial: loaded.initial,
+            messages: loaded.messages,
+          }),
+          loaded.tools.definitions.some((tool) => tool.name === "shell"),
+        )
         const prepared = yield* context.prepare({
           kind: "primary",
           scope: { session: loaded.session, agentID: loaded.agent.id, model: loaded.model, tools: loaded.tools },

@@ -4,11 +4,6 @@ import PROMPT from "./runner/prompt/system.txt"
 
 export function make(tools: string[]) {
   const instructions: string[] = []
-  if (tools.includes("shell")) {
-    instructions.push(
-      "- Prefer dedicated tools over shell commands; fall back to the shell when a tool cannot do what you need.",
-    )
-  }
   if (tools.includes("write")) {
     instructions.push(
       "- Use the write tool to create files or completely replace their content. Prefer using the edit tool for targeted changes.",

@@ -144,19 +144,27 @@ const layer = Layer.effect(
         },
         { concurrency: "unbounded" },
       )
+      const tools = loaded.tools.definitions.some((tool) => tool.name === "shell")
+        ? {
+            ...loaded.tools,
+            definitions: loaded.tools.definitions.filter(
+              (tool) => !["read", "write", "edit", "patch", "glob", "grep"].includes(tool.name),
+            ),
+          }
+        : loaded.tools
       return {
         session,
         agent: { ...agent, info: agent.info },
         instructions: Instructions.combine([
           loaded.builtins,
-          CodeModeInstructions.make(loaded.tools.codeModeCatalog),
+          CodeModeInstructions.make(tools.codeModeCatalog),
           loaded.discovery,
           loaded.skills,
           loaded.references,
           loaded.mcp,
           loaded.entries,
         ]),
-        tools: loaded.tools,
+        tools,
       }
     })
 

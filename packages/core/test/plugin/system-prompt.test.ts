@@ -40,10 +40,8 @@ describe("SystemPromptPlugin", () => {
   test("uses current vocabulary in the Meta prompt", () => {
     expect(PROMPT_META).toContain("`webfetch` tool")
     expect(PROMPT_META).toContain("`subagent` tool")
-    expect(PROMPT_META).toContain("Reserve `shell`")
-    expect(PROMPT_META).toContain("`read` for reading files")
-    expect(PROMPT_META).toContain("`edit` for editing")
-    expect(PROMPT_META).toContain("`write` for creating files")
+    expect(PROMPT_META).not.toContain("Reserve `shell`")
+    expect(PROMPT_META).not.toContain("Use `read` on a directory")
     expect(PROMPT_META).toContain("Follow that reminder for the files you may edit")
     expect(PROMPT_META).toContain("https://opencode.ai/v2/docs/")
     expect(PROMPT_META).not.toMatch(

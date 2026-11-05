@@ -39,7 +39,6 @@ const description = (shell?: string) =>
     "Execute a shell command and return its output.",
     ...(shell ? [`Commands run on ${OS} using ${shell}.`] : []),
     "Quote file paths containing spaces or special characters.",
-    "Prefer dedicated tools over shell commands when possible.",
     "When output is large, the full result is saved to a file and a truncated preview is returned.",
     "Rely on automatic truncation unless filtering the output is more useful.",
     "Commands accept an optional timeout, background commands have no timeout by default.",
