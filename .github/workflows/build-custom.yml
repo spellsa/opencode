@@ -2,7 +2,6 @@ name: Build OpenCode2
 
 on:
   push:
-    branches: [v2-custom]
   workflow_dispatch:
 
 permissions:
@@ -28,6 +27,9 @@ jobs:
             runner: macos-latest
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+      - name: Use the public npm registry
+        shell: bash
+        run: node -e "const fs = require('fs'); const file = 'bun.lock'; fs.writeFileSync(file, fs.readFileSync(file, 'utf8').replaceAll('https://npm.flatt.tech/', 'https://registry.npmjs.org/'))"
       - uses: ./.github/actions/setup-bun
       - name: Build CLI with web UI
         working-directory: packages/cli
