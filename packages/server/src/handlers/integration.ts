@@ -111,7 +111,9 @@ export const IntegrationHandler = HttpApiBuilder.group(Api, "server.integration"
                     message:
                       error._tag === "Integration.CodeRequired"
                         ? "Authorization code is required"
-                        : "Authentication failed",
+                        : error.cause instanceof Error && error.cause.message.trim()
+                          ? error.cause.message
+                          : "Authentication failed",
                     kind:
                       error._tag === "Integration.CodeRequired"
                         ? "integration_code_required"

@@ -163,6 +163,8 @@ describe("Anthropic subscription", () => {
       const server = Bun.serve({
         port: 0,
         async fetch(request) {
+          if (request.headers.get("user-agent") !== "claude-cli/2.1.289 (external, cli)")
+            return new Response(null, { status: 429 })
           const form = new URLSearchParams(await request.text())
           if (form.get("grant_type") === "authorization_code")
             return Response.json({ access_token: "initial", refresh_token: "refresh", expires_in: 3600 })

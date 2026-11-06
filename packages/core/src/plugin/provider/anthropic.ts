@@ -63,7 +63,10 @@ export function requestClaudeToken(body: Record<string, string>, url = tokenURL)
     try: async (signal) => {
       const response = await fetch(url, {
         method: "POST",
-        headers: { "content-type": "application/x-www-form-urlencoded" },
+        headers: {
+          "content-type": "application/x-www-form-urlencoded",
+          "user-agent": `claude-cli/${claudeVersion} (external, cli)`,
+        },
         body: new URLSearchParams(body),
         signal,
       })
