@@ -143,6 +143,8 @@ describe("Anthropic subscription", () => {
       const server = Bun.serve({
         port: 0,
         fetch(request) {
+          if (request.headers.get("user-agent") !== "claude-cli/2.1.289 (external, cli)")
+            return new Response(null, { status: 429 })
           const path = new URL(request.url).pathname
           if (path === "/unavailable") return new Response(null, { status: 503 })
           if (path === "/missing") return Response.json({})

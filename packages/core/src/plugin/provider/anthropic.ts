@@ -91,7 +91,11 @@ export function checkSubscriptionUsage(access: string, url = "https://api.anthro
   return Effect.tryPromise({
     try: async (signal) => {
       const response = await fetch(url, {
-        headers: { authorization: `Bearer ${access}`, "anthropic-beta": "oauth-2025-04-20" },
+        headers: {
+          authorization: `Bearer ${access}`,
+          "anthropic-beta": "oauth-2025-04-20",
+          "user-agent": `claude-cli/${claudeVersion} (external, cli)`,
+        },
         signal,
       })
       if (!response.ok) throw new Error(`Could not verify Claude subscription usage: HTTP ${response.status}`)
