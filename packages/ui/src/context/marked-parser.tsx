@@ -35,6 +35,10 @@ const inlineDollarMathRegex =
 
 const inlineParenMathRegex = /^\\\(((?:\\.|[^\\\n])*?)\\\)/
 
+const blockBracketMathRegex = /^\\\[([\s\S]+?)\\\](?:[ \t]*(?:\n|$))/
+
+const inlineBracketMathRegex = /^\\\[((?:\\.|[^\\\n])*?)\\\]/
+
 const blockMathRegex = /^(\${1,2})\n((?:\\[^]|[^\\])+?)\n\1(?:\n|$)/
 
 function renderMath(token: Tokens.Generic) {
@@ -91,6 +95,31 @@ export const markdownMath: MarkedExtension = {
           text: match[1].trim(),
           displayMode: false,
         }
+      },
+      renderer: renderMath,
+    },
+    {
+      name: "bracketKatex",
+      level: "block",
+      tokenizer(src) {
+        const match = src.match(blockBracketMathRegex)
+        if (!match) return
+        return { type: "bracketKatex", raw: match[0], text: match[1].trim(), displayMode: true }
+      },
+      renderer: (token) => renderMath(token) + "\n",
+    },
+    {
+      name: "inlineBracketKatex",
+      level: "inline",
+      start(src) {
+        const index = src.indexOf("\\[")
+        if (index === -1) return
+        return index
+      },
+      tokenizer(src) {
+        const match = src.match(inlineBracketMathRegex)
+        if (!match) return
+        return { type: "inlineBracketKatex", raw: match[0], text: match[1].trim(), displayMode: true }
       },
       renderer: renderMath,
     },

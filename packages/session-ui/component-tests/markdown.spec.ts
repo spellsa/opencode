@@ -942,6 +942,21 @@ story("preserves streamed math through completion and a fresh render", async ({ 
   await expect(markdown.locator(".katex")).toHaveCount(3)
   await expect(markdown.locator(".katex-display")).toHaveCount(1)
   await expect(markdown.locator(".katex-error")).toHaveCount(0)
+
+  const complex = String.raw`\[
+\begin{aligned}
+\mathcal{L}(\theta) &= \sum_{i=1}^{n} \int_{0}^{\infty} \frac{e^{-\lambda_i t}}{\sqrt{2\pi\sigma_i^2}}\,dt \\
+&= \begin{pmatrix} a_{11} & a_{12} \\ a_{21} & a_{22} \end{pmatrix}
+\end{aligned}
+\]`
+  await harness.getByLabel("Streaming").check()
+  await harness.getByLabel("Markdown text").fill(complex)
+  await expect(markdown.locator(".katex-display")).toHaveCount(1)
+  await expect(markdown.locator(".katex-error")).toHaveCount(0)
+  await expect(markdown.locator(".katex-display")).toContainText(String.raw`\begin{aligned}`)
+  await harness.getByLabel("Streaming").uncheck()
+  await expect(markdown.locator(".katex-display .katex-html")).toBeVisible()
+  await expect(markdown.locator(".katex-error")).toHaveCount(0)
 })
 
 for (const theme of ["light", "dark"]) {

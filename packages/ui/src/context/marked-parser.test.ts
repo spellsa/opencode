@@ -138,9 +138,38 @@ test.each([
   "- item\n\n      nested code",
   "foo\n```",
   "\\(x^2\\)",
+  "\\[x^2\\]",
   "$$\nx^2\n$$\n",
   "Energy is $E = mc^2$.",
   "a".repeat(1025),
 ])("leaves code, math, and large Markdown to the worker: %s", (text) => {
   expect(parseSmallMarkdown(text)).toBeUndefined()
+})
+
+test.each([
+  String.raw`\[x^2 + y^2 = z^2\]`,
+  String.raw`Before \[x^2\] after`,
+  String.raw`\[
+\begin{aligned}
+\mathcal{L}(\theta) &= \sum_{i=1}^{n} \int_{0}^{\infty} \frac{e^{-\lambda_i t}}{\sqrt{2\pi\sigma_i^2}}\,dt \\
+&= \begin{pmatrix} a_{11} & a_{12} \\ a_{21} & a_{22} \end{pmatrix}
+\end{aligned}
+\]`,
+  String.raw`- Formula:
+
+  \[
+  \frac{1}{2}
+  \]`,
+  String.raw`> \[
+> \int_0^1 x^2 \, dx
+> \]`,
+])("renders bracket display math including nested Markdown", async (text) => {
+  const html = await parser.parse(text)
+  expect(html).toContain('<span class="katex-display">')
+  expect(html).not.toContain("katex-error")
+  expect(html).toContain('<annotation encoding="application/x-tex">')
+})
+
+test("keeps bracket math in code as source", async () => {
+  expect(await parser.parse(String.raw`Use ` + "`" + String.raw`\[x\]` + "`")).not.toContain("katex-display")
 })
