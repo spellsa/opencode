@@ -101,10 +101,11 @@ describe("Anthropic subscription", () => {
       })
       const after = yield* hooks.trigger("session", "model.request", event())
       expect(after.headers["anthropic-beta"]).toContain("oauth-2025-04-20")
-      const subscribed = yield* Effect.promise(() => prepareSubscriptionRequest(call().request))
+      const subscribed = yield* Effect.promise(() => prepareSubscriptionRequest(call().request, "2.1.323"))
+      expect(subscribed.headers.get("user-agent")).toBe("claude-cli/2.1.323 (external, sdk-cli)")
       expect(yield* Effect.promise(() => subscribed.clone().json())).toMatchObject({
         system: [
-          { type: "text", text: expect.stringContaining("x-anthropic-billing-header:") },
+          { type: "text", text: expect.stringContaining("x-anthropic-billing-header: cc_version=2.1.323.") },
           { type: "text", text: "You are Claude Code, Anthropic's official CLI for Claude." },
           { type: "text", text: "project instructions" },
           {
@@ -149,7 +150,7 @@ describe("Anthropic subscription", () => {
       const server = Bun.serve({
         port: 0,
         fetch(request) {
-          if (request.headers.get("user-agent") !== "claude-cli/2.1.289 (external, cli)")
+          if (request.headers.get("user-agent") !== "claude-cli/2.1.322 (external, sdk-cli)")
             return new Response(null, { status: 429 })
           const path = new URL(request.url).pathname
           if (path === "/unavailable") return new Response(null, { status: 503 })
@@ -171,7 +172,7 @@ describe("Anthropic subscription", () => {
       const server = Bun.serve({
         port: 0,
         async fetch(request) {
-          if (request.headers.get("user-agent") !== "claude-cli/2.1.289 (external, cli)")
+          if (request.headers.get("user-agent") !== "claude-cli/2.1.322 (external, sdk-cli)")
             return new Response(null, { status: 429 })
           const form = new URLSearchParams(await request.text())
           if (form.get("grant_type") === "authorization_code")

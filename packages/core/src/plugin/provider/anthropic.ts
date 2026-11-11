@@ -12,7 +12,24 @@ const methodID = Integration.MethodID.make("claude-subscription")
 const clientID = "9d1c250a-e61b-44d9-88ed-5944d1962f5e"
 const redirect = "https://platform.claude.com/oauth/code/callback"
 const tokenURL = "https://platform.claude.com/v1/oauth/token"
-const claudeVersion = "2.1.289"
+const claudeVersion = "2.1.322"
+let versionCache: { until: number; value: Promise<string> } | undefined
+
+function currentClaudeVersion() {
+  if (versionCache && versionCache.until > Date.now()) return versionCache.value
+  const value = fetch("https://registry.npmjs.org/@anthropic-ai%2fclaude-code/latest", {
+    signal: AbortSignal.timeout(5000),
+  })
+    .then((response) => (response.ok ? response.json() : undefined))
+    .then((data) => {
+      const parsed = Schema.decodeUnknownOption(Schema.Struct({ version: Schema.String }))(data)
+      if (parsed._tag === "None" || !/^\d+\.\d+\.\d+$/.test(parsed.value.version)) return claudeVersion
+      return parsed.value.version
+    })
+    .catch(() => claudeVersion)
+  versionCache = { until: Date.now() + 24 * 60 * 60 * 1000, value }
+  return value
+}
 const Token = Schema.Struct({
   access_token: Schema.String,
   refresh_token: Schema.optional(Schema.String),
@@ -65,7 +82,7 @@ export function requestClaudeToken(body: Record<string, string>, url = tokenURL)
         method: "POST",
         headers: {
           "content-type": "application/x-www-form-urlencoded",
-          "user-agent": `claude-cli/${claudeVersion} (external, cli)`,
+          "user-agent": `claude-cli/${claudeVersion} (external, sdk-cli)`,
         },
         body: new URLSearchParams(body),
         signal,
@@ -94,7 +111,7 @@ export function checkSubscriptionUsage(access: string, url = "https://api.anthro
         headers: {
           authorization: `Bearer ${access}`,
           "anthropic-beta": "oauth-2025-04-20",
-          "user-agent": `claude-cli/${claudeVersion} (external, cli)`,
+          "user-agent": `claude-cli/${claudeVersion} (external, sdk-cli)`,
         },
         signal,
       })
@@ -114,7 +131,7 @@ export function checkSubscriptionUsage(access: string, url = "https://api.anthro
   })
 }
 
-export async function prepareSubscriptionRequest(request: Request) {
+export async function prepareSubscriptionRequest(request: Request, version = claudeVersion) {
   const body = await request.clone().json()
   const decoded = Schema.decodeUnknownOption(Schema.Record(Schema.String, Schema.Unknown))(body)
   if (decoded._tag === "None") return request
@@ -150,9 +167,10 @@ export async function prepareSubscriptionRequest(request: Request) {
         : ""
   const hash = createHash("sha256").update(text).digest("hex").slice(0, 5)
   const sampled = [4, 7, 20].map((index) => text[index] ?? "0").join("")
-  const suffix = createHash("sha256").update(`59cf53e54c78${sampled}${claudeVersion}`).digest("hex").slice(0, 3)
+  const suffix = createHash("sha256").update(`59cf53e54c78${sampled}${version}`).digest("hex").slice(0, 3)
   const headers = new Headers(request.headers)
   headers.delete("content-length")
+  headers.set("user-agent", `claude-cli/${version} (external, sdk-cli)`)
   const url = new URL(request.url)
   url.searchParams.set("beta", "true")
   return new Request(url.toString(), {
@@ -164,7 +182,7 @@ export async function prepareSubscriptionRequest(request: Request) {
       system: [
         {
           type: "text",
-          text: `x-anthropic-billing-header: cc_version=${claudeVersion}.${suffix}; cc_entrypoint=cli; cch=${hash};`,
+          text: `x-anthropic-billing-header: cc_version=${version}.${suffix}; cc_entrypoint=sdk-cli; cch=${hash};`,
         },
         { type: "text", text: "You are Claude Code, Anthropic's official CLI for Claude." },
         ...compatibleSystem,
@@ -232,7 +250,8 @@ export const AnthropicPlugin = define({
           if (!credential) return
           if (event.request.method !== "POST" || !new URL(event.request.url).pathname.endsWith("/messages")) return
           yield* checkSubscriptionUsage(credential.access).pipe(Effect.orDie)
-          event.request = yield* Effect.promise(() => prepareSubscriptionRequest(event.request))
+          const version = yield* Effect.promise(() => currentClaudeVersion())
+          event.request = yield* Effect.promise(() => prepareSubscriptionRequest(event.request, version))
         }),
       { providerID: Provider.ID.anthropic },
     )
@@ -244,7 +263,7 @@ export const AnthropicPlugin = define({
             if (!enabled) return
             event.headers["anthropic-beta"] =
               "claude-code-20250219,oauth-2025-04-20,interleaved-thinking-2025-05-14,fine-grained-tool-streaming-2025-05-14,context-management-2025-06-27"
-            event.headers["user-agent"] = `claude-cli/${claudeVersion} (external, cli)`
+            event.headers["user-agent"] = `claude-cli/${claudeVersion} (external, sdk-cli)`
             event.headers["x-app"] = "cli"
             event.headers["anthropic-dangerous-direct-browser-access"] = "true"
           }),
