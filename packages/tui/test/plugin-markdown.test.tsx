@@ -10,6 +10,7 @@ import { createTestRenderer } from "@opentui/core/testing"
 import { render } from "@opentui/solid"
 import { createRoot, createSignal } from "solid-js"
 import { createMarkdownRenderer } from "../src/plugin/markdown"
+import { createLatexCodeBlockRenderer, createLatexMarkdownRenderer } from "@opencode/latex/markdown"
 
 test("unrelated plugin toggles preserve mounted Markdown blocks", async () => {
   const output = await createTestRenderer({ width: 80, height: 12, remote: true })
@@ -118,5 +119,44 @@ test("changing and removing a Markdown handler refreshes existing messages", asy
     await output.waitForFrame((frame) => frame.includes("Second renderer"))
   } finally {
     output.renderer.destroy()
+  }
+})
+
+test("math plugin renders formulas and restores source when disabled", async () => {
+  const output = await createTestRenderer({ width: 80, height: 16, remote: true })
+  const palette = () => ({ text: "#ffffff", subdued: "#aaaaaa" })
+  const formula = createLatexMarkdownRenderer(output.renderer, palette)
+  const fence = createLatexCodeBlockRenderer(output.renderer, palette)
+  const [enabled, setEnabled] = createSignal(true)
+  const syntax = SyntaxStyle.fromStyles({ default: { fg: "#ffffff" } }, output.renderer.nativeScene)
+  await render(() => {
+    const renderNode = createMarkdownRenderer(
+      () => (enabled() ? [{ math: fence, latex: fence }] : []),
+      () => (enabled() ? formula : undefined),
+    )
+    return (
+      <markdown
+        syntaxStyle={syntax}
+        renderNode={renderNode()}
+        content={String.raw`Energy: $x^2$.
+
+$$
+\frac{1}{2}
+$$`}
+        internalBlockMode="top-level"
+      />
+    )
+  }, output.renderer)
+  try {
+    output.renderer.start()
+    await output.waitForFrame((frame) => frame.includes("x²") && frame.includes("───"))
+    setEnabled(false)
+    await output.waitForFrame((frame) => frame.includes("x^2") && frame.includes("\\frac"))
+    setEnabled(true)
+    await output.waitForFrame((frame) => frame.includes("x²") && frame.includes("───"))
+  } finally {
+    output.renderer.destroy()
+    await output.renderer.closed
+    syntax.destroy()
   }
 })

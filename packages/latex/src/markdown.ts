@@ -1,5 +1,6 @@
 import {
   CodeRenderable,
+  MarkdownRenderable,
   RenderableEvents,
   ScrollBoxRenderable,
   StyledText,
@@ -8,6 +9,7 @@ import {
   parseColor,
   type ColorInput,
   type MarkdownCodeBlockRenderer,
+  type MarkdownOptions,
   type RenderContext,
 } from "@opentui/core"
 import stringWidth from "string-width"
@@ -114,6 +116,56 @@ function layoutLatex(source: string) {
     return renderLatex(source, { strict: true, displayMode: true })
   } catch (error) {
     // Preserve the exact source for incomplete math, unsupported commands, and oversized input.
+    if (error instanceof LatexParseError || error instanceof RangeError) return undefined
+    throw error
+  }
+}
+
+/** Render ordinary Markdown math through the same terminal layout as math fences. */
+export function createLatexMarkdownRenderer(
+  context: RenderContext,
+  options: () => LatexOptions,
+): NonNullable<MarkdownOptions["renderNode"]> {
+  const render = createLatexCodeBlockRenderer(context, options)
+  return (token, node) => {
+    if (token.type !== "paragraph") return
+    const display = /^(?:\$\$([\s\S]+?)\$\$|\\\[([\s\S]+?)\\\])\s*$/.exec(token.raw.trim())
+    if (display) {
+      const source = (display[1] ?? display[2]).trim()
+      return render(
+        { type: "code", raw: `\`\`\`math\n${source}\n\`\`\``, text: source, lang: "math" },
+        {
+          ...node,
+          defaultRender: () => null,
+        },
+      )
+    }
+    // Keep code spans and escaped delimiters intact; parse only complete inline expressions.
+    const source = token.raw.replace(
+      /(`+)(?:[^`]|`(?!\1))*?\1|\\\$|\\\(([\s\S]*?)\\\)|\$(?!\$)(?=\S)((?:\\.|[^\\$\n])*?(?:\\\S|[^\s\\$]))\$(?![\w$])/g,
+      (raw, code: string | undefined, paren: string | undefined, dollar: string | undefined) => {
+        if (code || raw === "\\$") return raw
+        const layout = layoutLatexInline(paren ?? dollar ?? "")
+        return layout?.height === 1 ? layout.toString() : raw
+      },
+    )
+    if (source === token.raw) return
+    return new MarkdownRenderable(context, {
+      content: source,
+      syntaxStyle: node.syntaxStyle,
+      conceal: node.conceal,
+      concealCode: node.concealCode,
+      treeSitterClient: node.treeSitterClient,
+      internalBlockMode: "top-level",
+      width: "100%",
+    })
+  }
+}
+
+function layoutLatexInline(source: string) {
+  try {
+    return renderLatex(source, { strict: true, displayMode: false })
+  } catch (error) {
     if (error instanceof LatexParseError || error instanceof RangeError) return undefined
     throw error
   }

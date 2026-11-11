@@ -11,7 +11,7 @@ import {
 } from "@opentui/core"
 import { createTestRenderer } from "@opentui/core/testing"
 import { renderLatex } from "./render"
-import { createLatexCodeBlockRenderer } from "./markdown"
+import { createLatexCodeBlockRenderer, createLatexMarkdownRenderer } from "./markdown"
 
 const renderers: {
   renderer: Awaited<ReturnType<typeof createTestRenderer>>["renderer"]
@@ -251,3 +251,47 @@ test.each([String.raw`\text{${"\u4e2d\u6587"}}=x`, String.raw`\frac{\text{${"\u4
     expect(viewport.scrollWidth).toBe(layout.width)
   },
 )
+
+test("renders ordinary inline and display math and keeps the surrounding Markdown", async () => {
+  const output = await setup(String.raw`Energy is $x^2$.
+
+$$
+\frac{1}{2}
+$$`)
+  output.markdown.renderNode = createLatexMarkdownRenderer(output.renderer, () => output.palette)
+  await output.renderOnce()
+  const blocks = output.markdown.getChildren()
+  expect(blocks[0]).toBeInstanceOf(MarkdownRenderable)
+  expect(blocks[1]).toBeInstanceOf(ScrollBoxRenderable)
+  expect(blocks[1]?.getChildren()[0]).toBeInstanceOf(TextRenderable)
+  const inline = blocks[0]
+  if (!(inline instanceof MarkdownRenderable)) throw new Error("Expected inline Markdown")
+  expect(inline.content).toContain("x²")
+  expect(output.captureCharFrame()).not.toContain("\\frac")
+})
+
+test("leaves ordinary math as Markdown when the renderer is disabled", async () => {
+  const output = await setup("$$\nx^2\n$$")
+  output.markdown.renderNode = createLatexMarkdownRenderer(output.renderer, () => output.palette)
+  await output.renderOnce()
+  expect(output.markdown.getChildren()[0]).toBeInstanceOf(ScrollBoxRenderable)
+  output.markdown.renderNode = undefined
+  await output.renderOnce()
+  expect(output.markdown.getChildren()[0]).not.toBeInstanceOf(ScrollBoxRenderable)
+})
+
+test("renders parenthesized inline and bracketed display formulas", async () => {
+  const output = await setup(String.raw`For \(x^2\),
+
+\[
+\sqrt{x}
+\]`)
+  output.markdown.renderNode = createLatexMarkdownRenderer(output.renderer, () => output.palette)
+  await output.renderOnce()
+  const blocks = output.markdown.getChildren()
+  expect(blocks[0]).toBeInstanceOf(MarkdownRenderable)
+  expect(blocks[1]).toBeInstanceOf(ScrollBoxRenderable)
+  const inline = blocks[0]
+  if (!(inline instanceof MarkdownRenderable)) throw new Error("Expected inline Markdown")
+  expect(inline.content).toContain("x²")
+})

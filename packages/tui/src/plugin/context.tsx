@@ -33,6 +33,7 @@ import { discoverPluginTargets, localSource, mergePluginTargets } from "./discov
 import { createPluginSources } from "./source"
 import { isMissingPath } from "../util/config-directories"
 import { createMarkdownRenderer } from "./markdown"
+import { createLatexMarkdownRenderer } from "@opencode/latex/markdown"
 import { useLog, type LogTags } from "../context/log"
 
 export interface PackageSource {
@@ -138,8 +139,16 @@ export function PluginProvider(props: ParentProps<{ packages: PackageSource; dir
       )
       .finally(() => clearTimeout(stalled))
   }
-  const markdown = createMarkdownRenderer(() =>
-    Object.values(store.registrations).flatMap((registration) => (registration.active ? [registration.markdown] : [])),
+  const latex = createLatexMarkdownRenderer(host.renderer, () => ({
+    text: host.themes.currentTokens().text.base,
+    subdued: host.themes.currentTokens().text.muted,
+  }))
+  const markdown = createMarkdownRenderer(
+    () =>
+      Object.values(store.registrations).flatMap((registration) =>
+        registration.active ? [registration.markdown] : [],
+      ),
+    () => (store.registrations["opencode.latex"]?.active ? latex : undefined),
   )
   const clearContributions = (id: string) => {
     setStore("registrations", id, "routes", reconcileStore({}))
