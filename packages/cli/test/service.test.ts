@@ -746,6 +746,7 @@ test("service registration replaces a stale owner with the bound address", async
       url: "http://127.0.0.1:4321",
       pid: process.pid,
       password: "secret",
+      heartbeat: expect.any(Number),
     })
     await Effect.runPromise(cleanup.pipe(Effect.provide(NodeFileSystem.layer)))
     expect(await Bun.file(registration).exists()).toBe(false)

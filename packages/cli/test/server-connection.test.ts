@@ -64,6 +64,62 @@ test("resolution groups Effect-native lifecycle operations only for the managed 
   }
 })
 
+const environmentPassword =
+  process.env.OPENCODE_PASSWORD !== undefined || process.env.OPENCODE_SERVER_PASSWORD !== undefined
+
+test.skipIf(environmentPassword)("explicit server reuses the persisted service password", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "opencode-server-password-"))
+  const layer = Global.layerWith({ config: path.join(root, "config"), state: path.join(root, "state") })
+  const runPromise = <A, E>(effect: Effect.Effect<A, E, Global.Service | FileSystem.FileSystem | Scope.Scope>) =>
+    Effect.runPromise(effect.pipe(Effect.provide(layer), Effect.provide(NodeFileSystem.layer), Effect.scoped))
+  const expected = `Basic ${btoa("opencode:persisted")}`
+  const server = Bun.serve({
+    port: 0,
+    fetch(request) {
+      if (request.headers.get("authorization") !== expected) return new Response(null, { status: 401 })
+      return Response.json({ version: OPENCODE_VERSION, pid: process.pid, urls: [] })
+    },
+  })
+
+  try {
+    await fs.mkdir(path.join(root, "config"), { recursive: true })
+    await fs.writeFile(path.join(root, "config", ServiceConfig.filename()), JSON.stringify({ password: "persisted" }))
+    const resolved = await runPromise(ServerConnection.resolve({ server: server.url.toString() }))
+    expect(resolved.endpoint).toEqual({
+      url: server.url.toString(),
+      auth: { type: "basic", username: "opencode", password: "persisted" },
+    })
+  } finally {
+    await server.stop(true)
+    await fs.rm(root, { recursive: true, force: true })
+  }
+})
+
+test("explicit server retries while a starting service returns 503", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "opencode-server-starting-"))
+  const layer = Global.layerWith({ config: path.join(root, "config"), state: path.join(root, "state") })
+  const runPromise = <A, E>(effect: Effect.Effect<A, E, Global.Service | FileSystem.FileSystem | Scope.Scope>) =>
+    Effect.runPromise(effect.pipe(Effect.provide(layer), Effect.provide(NodeFileSystem.layer), Effect.scoped))
+  let requests = 0
+  const server = Bun.serve({
+    port: 0,
+    fetch() {
+      requests += 1
+      if (requests < 3) return new Response(null, { status: 503 })
+      return Response.json({ version: OPENCODE_VERSION, pid: process.pid, urls: [] })
+    },
+  })
+
+  try {
+    const resolved = await runPromise(ServerConnection.resolve({ server: server.url.toString() }))
+    expect(resolved.endpoint.url).toBe(server.url.toString())
+    expect(requests).toBeGreaterThanOrEqual(3)
+  } finally {
+    await server.stop(true)
+    await fs.rm(root, { recursive: true, force: true })
+  }
+}, 10_000)
+
 test("service options only require a matching version when requested", async () => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "opencode-service-options-"))
   const layer = Global.layerWith({ config: path.join(root, "config"), state: path.join(root, "state") })

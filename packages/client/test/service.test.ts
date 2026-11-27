@@ -187,17 +187,68 @@ test("evicts an unresponsive registered service before starting its replacement"
       file: registration,
       version: "test",
       command: fixture.command("delayed", "10"),
+      unresponsiveRecovery: true,
     }),
   )
   const replacement = await Bun.file(registration).json()
   fixture.track(replacement.pid)
 
-  expect((await Bun.file(registration + ".requests").text()).trim().split("\n")).toHaveLength(3)
+  expect((await Bun.file(registration + ".requests").text()).trim().split("\n")).toHaveLength(4)
   expect(await existing.exited).toBe(stoppedExitCode)
   expect(replacement.pid).not.toBe(original.pid)
   expect(endpoint.url).toBe(replacement.url)
   expect(await status(endpoint.url)).toMatchObject({ version: "test", pid: replacement.pid })
 })
+
+test("does not terminate a slow but heartbeating service", async () => {
+  await using fixture = await serviceFixture()
+  const registration = fixture.registration
+  const owner = fixture.spawn("slow", "500")
+  await fixture.waitForFile()
+  const starts: EnsureReason[] = []
+  const options = {
+    file: registration,
+    version: "test",
+    command: fixture.command("record-start"),
+    onStart: (reason: EnsureReason) => starts.push(reason),
+    unresponsiveRecovery: true,
+  }
+
+  const results = await Promise.allSettled(Array.from({ length: 9 }, () => run(ensure(options))))
+
+  expect(results.every((result) => result.status === "rejected")).toBe(true)
+  expect(starts).toEqual([])
+  expect(owner.exitCode).toBe(null)
+  expect(await Bun.file(registration + ".signal").exists()).toBe(false)
+  expect(await Bun.file(registration + ".started").exists()).toBe(false)
+  expect((await Bun.file(registration).json()).pid).toBe(owner.pid)
+}, 10_000)
+
+test("keeps an owner that answers the long confirmation probe without a heartbeat", async () => {
+  await using fixture = await serviceFixture()
+  const registration = fixture.registration
+  const owner = fixture.spawn("slow-stale", "200")
+  await fixture.waitForFile()
+  const starts: EnsureReason[] = []
+
+  await expect(
+    run(
+      ensure({
+        file: registration,
+        version: "test",
+        command: fixture.command("record-start"),
+        onStart: (reason) => starts.push(reason),
+        unresponsiveRecovery: true,
+      }),
+    ),
+  ).rejects.toThrow("Timed out waiting for the background service to start")
+
+  expect(starts).toEqual([])
+  expect(owner.exitCode).toBe(null)
+  expect(await Bun.file(registration + ".signal").exists()).toBe(false)
+  expect(await Bun.file(registration + ".started").exists()).toBe(false)
+  expect((await Bun.file(registration).json()).pid).toBe(owner.pid)
+}, 10_000)
 
 test("signals an unresponsive registered service process", async () => {
   await using fixture = await serviceFixture()

@@ -1,3 +1,4 @@
+import { ConfigFlag } from "@opencode/schema/config/flag"
 import { Global } from "@opencode/util/global"
 import { OPENCODE_CHANNEL, OPENCODE_VERSION } from "../version"
 import { Hash } from "@opencode/util/hash"
@@ -148,6 +149,7 @@ export const options = Effect.fnUntraced(function* (input: { readonly checkVersi
     version: input.checkVersion ? OPENCODE_VERSION : undefined,
     env: processEnv((yield* read()).env),
     command: [...selfCommand(), "serve", "--service"],
+    unresponsiveRecovery: ConfigFlag.enabledFromEnv("service_heartbeat", OPENCODE_CHANNEL),
   }
 })
 

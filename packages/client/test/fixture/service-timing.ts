@@ -3,7 +3,11 @@ import { withEnsureTiming } from "../../src/service-timing"
 const timing = {
   pollInterval: 20,
   requestTimeout: 100,
+  unresponsiveTimeout: 500,
+  unresponsiveAttempts: 3,
+  heartbeatTimeout: 500,
   spawnDelay: 200,
+  spawnJitter: 0,
   maxSpawnDelay: 1_200,
   promiseTimeout: 3_000,
   stopPollInterval: 5,

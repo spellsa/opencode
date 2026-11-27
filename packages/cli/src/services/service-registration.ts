@@ -27,23 +27,28 @@ export const register = Effect.fnUntraced(function* (options: {
     url: HttpServer.formatAddress(options.address),
     pid: process.pid,
     password: options.password,
+    heartbeat: Date.now(),
   }
-  const encoded = yield* encodeInfo(info)
   const current = fs.readFileString(options.file).pipe(Effect.flatMap(decodeInfo))
+  // Heartbeat is intentionally not part of identity: the owner refreshes it while watching the
+  // registration, and clients use it only to decide whether a timed-out probe is worth killing.
   const owns = (found: Info) =>
     found.id === info.id &&
     found.version === info.version &&
     found.url === info.url &&
     found.pid === info.pid &&
     found.password === info.password
-  yield* fs
-    .writeFileString(temp, encoded, { mode: 0o600 })
-    .pipe(
+  const write = (heartbeat: number) =>
+    Effect.gen(function* () {
+      const encoded = yield* encodeInfo({ ...info, heartbeat })
+      yield* fs.writeFileString(temp, encoded, { mode: 0o600 })
       // Windows rename can fail with EPERM while a contender or test polls the registration file.
-      Effect.andThen(
-        fs.rename(temp, options.file).pipe(Effect.retry({ times: 20, schedule: Schedule.spaced("10 millis") })),
-      ),
+      yield* fs.rename(temp, options.file).pipe(Effect.retry({ times: 20, schedule: Schedule.spaced("10 millis") }))
+    }).pipe(
+      // A heartbeat interrupted by shutdown must not leave its staging file behind.
+      Effect.ensuring(fs.remove(temp).pipe(Effect.ignore)),
     )
+  yield* write(info.heartbeat)
   yield* current.pipe(
     Effect.catchCause((cause) =>
       Effect.logWarning("managed service registration check failed; shutting down", {
@@ -67,7 +72,19 @@ export const register = Effect.fnUntraced(function* (options: {
           }),
     ),
     Effect.filterOrFail(owns),
-    Effect.repeat(Schedule.spaced("5 seconds")),
+    Effect.flatMap(() =>
+      write(Date.now()).pipe(
+        Effect.catchCause((cause) =>
+          Effect.logWarning("managed service registration heartbeat failed", {
+            cause,
+            serviceID: options.id,
+            servicePID: process.pid,
+            registration: options.file,
+          }),
+        ),
+      ),
+    ),
+    Effect.repeat(Schedule.spaced("2 seconds")),
     Effect.ignore,
     Effect.andThen(options.shutdown),
     Effect.forkScoped,

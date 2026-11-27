@@ -16,7 +16,7 @@ afterEach(() => {
 })
 
 test("remembers the first startup failure and reports it once no attempt is left", async () => {
-  const pool = contenderPool({ ...defaultEnsureTiming, spawnDelay: 0 })
+  const pool = contenderPool({ ...defaultEnsureTiming, spawnDelay: 0, spawnJitter: 0 })
   const survivor = running()
   const failed = failing("first failure")
   pool.add(survivor)
@@ -33,7 +33,7 @@ test("remembers the first startup failure and reports it once no attempt is left
 })
 
 test("evicting a replaced owner forgets its failure and restarts the spawn clock", async () => {
-  const pool = contenderPool({ ...defaultEnsureTiming, spawnDelay: 60_000 })
+  const pool = contenderPool({ ...defaultEnsureTiming, spawnDelay: 60_000, spawnJitter: 0 })
   const owner = running()
   const failed = failing("old failure")
   pool.add(owner)
@@ -51,7 +51,7 @@ test("evicting a replaced owner forgets its failure and restarts the spawn clock
 })
 
 test("an unanswered registration gets one spawn delay before an attempt competes", () => {
-  const timing = { ...defaultEnsureTiming, spawnDelay: 60_000 }
+  const timing = { ...defaultEnsureTiming, spawnDelay: 60_000, spawnJitter: 0 }
   expect(contenderPool(timing).shouldRecruit(false)).toBe(true)
 
   const registered = contenderPool(timing)
@@ -61,7 +61,7 @@ test("an unanswered registration gets one spawn delay before an attempt competes
 })
 
 test("keeps at most two attempts alive", async () => {
-  const pool = contenderPool({ ...defaultEnsureTiming, spawnDelay: 0 })
+  const pool = contenderPool({ ...defaultEnsureTiming, spawnDelay: 0, spawnJitter: 0 })
   const exiting = clean()
   pool.add(running())
   pool.add(exiting)
@@ -73,7 +73,7 @@ test("keeps at most two attempts alive", async () => {
 })
 
 test("clean exits back off up to the maximum spawn delay", async () => {
-  const pool = contenderPool({ ...defaultEnsureTiming, spawnDelay: 200, maxSpawnDelay: 300 })
+  const pool = contenderPool({ ...defaultEnsureTiming, spawnDelay: 200, spawnJitter: 0, maxSpawnDelay: 300 })
   const exiting = clean()
   pool.add(exiting)
   const start = Date.now()
@@ -90,7 +90,7 @@ test("clean exits back off up to the maximum spawn delay", async () => {
 })
 
 test("an answering service resets the backoff to the base spawn delay", async () => {
-  const pool = contenderPool({ ...defaultEnsureTiming, spawnDelay: 200, maxSpawnDelay: 1_000 })
+  const pool = contenderPool({ ...defaultEnsureTiming, spawnDelay: 200, spawnJitter: 0, maxSpawnDelay: 1_000 })
   const exiting = clean()
   pool.add(exiting)
   const start = Date.now()

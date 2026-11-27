@@ -4,7 +4,15 @@ import { contenderPool, spawnServiceContender } from "../service-contender.js"
 import { defaultEnsureTiming, ensureTiming, type EnsureTiming } from "../service-timing.js"
 import { matchesVersion } from "../service-version.js"
 import { PtyHandoff } from "../pty-handoff.js"
-import { decide, fallback, headers, probeResult, same } from "../service-probe.js"
+import {
+  decide,
+  fallback,
+  headers,
+  probeResult,
+  same,
+  shouldTerminateUnresponsive,
+  warnSlowOwnerOnce,
+} from "../service-probe.js"
 
 export * from "../service.js"
 export { headers }
@@ -51,6 +59,7 @@ export const ensure = Effect.fn("service.ensure")(function* (options: EnsureOpti
   const pool = contenderPool(timing)
   let timeouts: { readonly info: Info; readonly count: number } | undefined
   let announced = false
+  const recovery = options.unresponsiveRecovery === true
   const announce = (reason: "missing" | "version-mismatch", previousVersion?: string) =>
     Effect.sync(() => {
       if (announced) return
@@ -72,19 +81,42 @@ export const ensure = Effect.fn("service.ensure")(function* (options: EnsureOpti
     const registration = yield* registered(options.file, timing.requestTimeout)
     const info = registration.info
     const service = registration.service
+    // With recovery enabled, a timed-out probe is not proof of death: do not race contenders
+    // against a port a slow owner still holds until its process or heartbeat proves it dead.
+    let slowOwner = false
     if (registration.timedOut && info !== undefined) {
       timeouts = {
         info,
         count: timeouts !== undefined && same(timeouts.info, info) ? timeouts.count + 1 : 1,
       }
-      if (timeouts.count >= 3) {
-        yield* announce("missing")
-        yield* Effect.logWarning("Background service is unresponsive; recovery cannot preserve persistent terminals")
-        yield* Effect.tryPromise(() => PtyHandoff.clear(options.file ?? fallback()))
-        yield* terminate(info, options, timing)
-        pool.evict(info.pid)
-        pool.recruitNow()
-        timeouts = undefined
+      slowOwner = recovery
+      if (timeouts.count >= (recovery ? timing.unresponsiveAttempts : 3)) {
+        const confirmTerminate =
+          !recovery || (yield* Effect.promise(() => shouldTerminateUnresponsive(info, timing)))
+        if (confirmTerminate) {
+          yield* announce("missing")
+          yield* Effect.logWarning(
+            "Background service is unresponsive; recovery cannot preserve persistent terminals",
+            {
+              servicePID: info.pid,
+              timeouts: timeouts.count,
+              heartbeatAgeMs: info.heartbeat === undefined ? undefined : Date.now() - info.heartbeat,
+            },
+          )
+          yield* Effect.tryPromise(() => PtyHandoff.clear(options.file ?? fallback()))
+          yield* terminate(info, options, timing)
+          pool.evict(info.pid)
+          pool.recruitNow()
+          slowOwner = false
+          timeouts = undefined
+        } else {
+          if (warnSlowOwnerOnce(options.file ?? fallback()))
+            yield* Effect.logWarning("Background service is slow but still alive; keeping it", {
+              servicePID: info.pid,
+              heartbeatAgeMs: info.heartbeat === undefined ? undefined : Date.now() - info.heartbeat,
+            })
+          timeouts = undefined
+        }
       }
     } else timeouts = undefined
     if (service !== undefined) {
@@ -107,7 +139,7 @@ export const ensure = Effect.fn("service.ensure")(function* (options: EnsureOpti
 
     const failed = pool.reap()
     if (failed !== undefined) return yield* Effect.fail(failed)
-    if (pool.shouldRecruit(info !== undefined)) {
+    if (!slowOwner && pool.shouldRecruit(info !== undefined)) {
       yield* announce("missing")
       pool.add(yield* spawnContender)
     }
@@ -145,6 +177,7 @@ export const Info = Schema.Struct({
   url: Schema.String,
   pid: Schema.Int.check(Schema.isGreaterThan(0)),
   password: Schema.optional(Schema.String),
+  heartbeat: Schema.optional(Schema.Int),
 })
 
 const decode = Schema.decodeUnknownEffect(Schema.fromJsonString(Info))

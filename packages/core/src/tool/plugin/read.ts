@@ -14,8 +14,10 @@ import { Skill } from "../../skill.js"
 import { SkillDiscovery } from "../../skill/discovery.js"
 import { ReadToolFileSystem } from "../read-filesystem.js"
 import { Environment } from "../../environment/index.js"
+import { Flag } from "../../flag.js"
 
 export const name = "read"
+const IMAGE_MIMES = new Set(["image/png", "image/jpeg", "image/gif", "image/webp"])
 const FILENAME = "AGENTS.md"
 const LocationInput = Schema.Struct({
   path: Schema.String.annotate({ description: "File or directory to read" }),
@@ -173,6 +175,31 @@ export const Plugin = {
         }),
       )
       .pipe(Effect.orDie)
+
+    if (yield* Flag.enabled("image_read_tool"))
+      yield* ctx.tool
+        .transform((editor) => {
+          const read = editor.get(name)
+          if (!read) return
+          editor.add({
+            ...read,
+            name: "image_read",
+            options: { codemode: false, permission: "read" },
+            description:
+              "Read a local image and present it directly to the model. Supports PNG, JPEG, GIF, and WebP. Use shell for non-image files.",
+            input: Schema.Struct({ path: Schema.String.annotate({ description: "Path of the image to read" }) }),
+            execute: (input, context) =>
+              read.execute(input, context).pipe(
+                Effect.flatMap((result) => {
+                  const output = result.output
+                  if (output?.type !== "file" || output.encoding !== "base64" || !IMAGE_MIMES.has(output.mime))
+                    return Effect.fail(new ToolFailure({ message: `Not a supported image: ${input.path}` }))
+                  return Effect.succeed(result)
+                }),
+              ),
+          })
+        })
+        .pipe(Effect.orDie)
 
     const alternatePath = Effect.fn("ReadTool.alternatePath")(function* (absolute: string) {
       const canonical = (name: string) =>

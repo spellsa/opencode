@@ -1,5 +1,6 @@
 import { app } from "electron"
 import type { Endpoint } from "@opencode/client/service"
+import { ConfigFlag } from "@opencode/schema/config/flag"
 import { Context, Effect, FileSystem, Layer, Option, Path, Schema } from "effect"
 import { SidecarChanged } from "../../shared/ipc-rpc/events"
 import { CHANNEL } from "../constants"
@@ -72,6 +73,7 @@ const ensure = Effect.fn("BackgroundService.ensure")(function* (mode: Background
       ],
       onStart: (reason, previousVersion) =>
         runFork(Effect.logInfo("v2 CLI background service starting", { reason, previousVersion })),
+      unresponsiveRecovery: ConfigFlag.enabledFromEnv("service_heartbeat", CHANNEL),
     })
 
   const service = yield* Effect.tryPromise(() =>
