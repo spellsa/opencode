@@ -32,6 +32,11 @@ export type EnsureOptions = DiscoverOptions & {
   readonly env?: Readonly<Record<string, string>>
   /** Called once before spawning a new service process. */
   readonly onStart?: (reason: EnsureReason, previousVersion?: string) => void
+  /**
+   * Confirm an unresponsive owner is dead or stale before replacing it. Callers derive this from the
+   * service_heartbeat flag; the default keeps the release behavior of replacing after three timeouts.
+   */
+  readonly unresponsiveRecovery?: boolean
 }
 
 /** Options used to stop the local OpenCode service. */
@@ -54,4 +59,9 @@ export type Info = {
   readonly pid: number
   /** Private service password, when authentication is enabled. */
   readonly password?: string
+  /**
+   * Epoch milliseconds of the owner's last registration heartbeat. Present only on servers new
+   * enough to publish it; clients use it to distinguish a busy owner from a dead one.
+   */
+  readonly heartbeat?: number
 }

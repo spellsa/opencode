@@ -1165,12 +1165,12 @@ describe("SessionRunnerLLM", () => {
     expect((yield* s.session.get(sessionID)).title).toBe("Generated title")
   })
 
-  scenario("uses shell batching guidance while hiding dedicated file tools", function* (s) {
+  scenario("keeps image_read available with shell batching guidance while hiding file tools", function* (s) {
     const registry = yield* Tool.Service
     yield* transformTools(
       registry,
       Object.fromEntries(
-        ["shell", "read", "write", "edit", "patch", "glob", "grep"].map((name) => [
+        ["shell", "read", "image_read", "write", "edit", "patch", "glob", "grep"].map((name) => [
           name,
           {
             name,
@@ -1189,6 +1189,7 @@ describe("SessionRunnerLLM", () => {
 
     const request = s.requests[0]!
     expect(request.tools.map((tool) => tool.name)).toContain("shell")
+    expect(request.tools.map((tool) => tool.name)).toContain("image_read")
     for (const name of ["read", "write", "edit", "patch", "glob", "grep"])
       expect(request.tools.map((tool) => tool.name)).not.toContain(name)
     expect(request.system.some((part) => part.text === SessionShellBatch.prompt)).toBe(true)

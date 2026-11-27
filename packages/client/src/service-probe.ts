@@ -45,6 +45,43 @@ export function same(left: Info, right: Info) {
   return left.id === right.id && left.version === right.version && left.url === right.url && left.pid === right.pid
 }
 
+/** Whether the owner published a heartbeat recently enough to prove its event loop is alive. */
+export function heartbeatFresh(info: Info, timeout = defaultEnsureTiming.heartbeatTimeout) {
+  return info.heartbeat !== undefined && Date.now() - info.heartbeat <= timeout
+}
+
+/**
+ * Decide whether a health-probe timeout is enough evidence to terminate the owner.
+ *
+ * A timed-out probe only proves that one request was slow. Before treating it as a dead service,
+ * require that the process is gone, or that its registration heartbeat is stale and a much longer
+ * probe still gets no answer. This keeps a busy but healthy owner from being killed by each client.
+ */
+export async function shouldTerminateUnresponsive(info: Info, timing = defaultEnsureTiming) {
+  if (!processAlive(info.pid)) return true
+  if (heartbeatFresh(info, timing.heartbeatTimeout)) return false
+  if ((await probeResult(info, timing.unresponsiveTimeout)).service !== undefined) return false
+  return true
+}
+
+function processAlive(pid: number) {
+  try {
+    process.kill(pid, 0)
+    return true
+  } catch {
+    return false
+  }
+}
+
+const slowOwnerWarnings = new Set<string>()
+
+/** Emit the "slow but still alive" warning at most once per registration file per process. */
+export function warnSlowOwnerOnce(file: string) {
+  if (slowOwnerWarnings.has(file)) return false
+  slowOwnerWarnings.add(file)
+  return true
+}
+
 /** Ask a registered owner for its health and classify the answer. */
 export async function probeResult(info: Info, timeout = defaultEnsureTiming.requestTimeout) {
   const endpoint = {

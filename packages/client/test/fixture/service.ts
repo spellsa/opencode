@@ -71,6 +71,7 @@ const server = Bun.serve({
     if (pathname === "/api/experimental/persistent-pty/handoff" && mode === "handoff-broken")
       return new Response(null, { status: 500 })
     if (pathname !== "/api/info") return new Response(null, { status: 404 })
+    if (mode === "slow" || mode === "slow-stale") await Bun.sleep(Number(delay ?? 500))
     if (mode === "protocol" && (await Bun.file(registration + ".missing-health").exists()))
       return new Response(null, { status: 404 })
     requests += 1
@@ -121,6 +122,29 @@ await writeFile(
   { mode: 0o600 },
 )
 await rename(registration + ".tmp", registration)
+
+if (mode === "slow") {
+  // Keep publishing a heartbeat while every health probe outlives the accelerated request timeout.
+  // A client must treat this owner as busy, not dead.
+  void (async () => {
+    while (true) {
+      await writeFile(
+        registration + ".heartbeat.tmp",
+        JSON.stringify({
+          id,
+          version,
+          url: server.url.toString(),
+          pid: process.pid,
+          password: "private",
+          heartbeat: Date.now(),
+        }),
+        { mode: 0o600 },
+      )
+      await rename(registration + ".heartbeat.tmp", registration)
+      await Bun.sleep(20)
+    }
+  })()
+}
 
 async function shutdown(signal?: NodeJS.Signals) {
   if (signal !== undefined) await writeFile(registration + ".signal", signal)

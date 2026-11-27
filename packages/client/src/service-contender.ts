@@ -37,8 +37,13 @@ export function spawnServiceContender(
   child.once("error", (cause) => {
     error = new Error("Failed to start server", { cause })
   })
-  child.once("close", () => {
+  child.once("close", (code) => {
     closed = true
+    // Losing contenders normally exit cleanly after another process wins the port. Their stderr is
+    // the only place EADDRINUSE appears, so surface that tail instead of discarding the diagnosis.
+    const output = stderr.toString("utf8").trim()
+    if (code === 0 && /EADDRINUSE|address already in use/i.test(output))
+      process.stderr.write(`[opencode service] startup contender ${child.pid ?? "?"} exited:\n${output}\n`)
   })
   child.unref()
   return {
@@ -62,6 +67,13 @@ export function contenderPool(timing: EnsureTiming) {
   const contenders = new Set<ServiceContender>()
   let failure: Error | undefined
   let spawnDelay = timing.spawnDelay
+  // Spread clients that noticed the same missing service instead of letting all of them spawn at
+  // once. The first attempt waits only a random slice of the jitter (so a cold start stays fast);
+  // later attempts include the spawn delay and backoff on top of another random slice.
+  const jitter = () => Math.floor(Math.random() * timing.spawnJitter)
+  const nextSpawnDelay = () => spawnDelay + jitter()
+  let firstDelay = jitter()
+  let nextDelay = firstDelay
   let lastSpawn = 0
   return {
     /** The first startup failure seen since the last eviction. */
@@ -69,6 +81,7 @@ export function contenderPool(timing: EnsureTiming) {
     /** A registered service answered, so the next attempt waits the base delay again. */
     serviceAnswered() {
       spawnDelay = timing.spawnDelay
+      nextDelay = nextSpawnDelay()
     },
     /**
      * The owner `pid` was replaced. Drop its attempt and any finished ones, forget their
@@ -83,17 +96,20 @@ export function contenderPool(timing: EnsureTiming) {
       }
       failure = undefined
       lastSpawn = 0
+      firstDelay = jitter()
     },
     /** Let the next attempt start without waiting a spawn delay. */
     recruitNow() {
-      lastSpawn = Date.now() - spawnDelay
+      lastSpawn = Date.now() - nextDelay
     },
     /** Collect finished attempts. Returns the startup failure once no attempt is left alive. */
     reap() {
       const finished = [...contenders].filter(contenderFinished)
       failure ??= finished.map(contenderFailure).find((error) => error !== undefined)
-      if (finished.some((item) => item.child.exitCode === 0))
+      if (finished.some((item) => item.child.exitCode === 0)) {
         spawnDelay = Math.min(spawnDelay * 2, timing.maxSpawnDelay)
+        nextDelay = nextSpawnDelay()
+      }
       finished.forEach((item) => contenders.delete(item))
       return contenders.size === 0 ? failure : undefined
     },
@@ -102,14 +118,18 @@ export function contenderPool(timing: EnsureTiming) {
      * spawn delay before an attempt competes with it.
      */
     shouldRecruit(registered: boolean) {
-      if (lastSpawn === 0 && registered) lastSpawn = Date.now()
+      if (lastSpawn === 0) {
+        lastSpawn = Date.now()
+        nextDelay = registered ? nextSpawnDelay() : firstDelay
+      }
       // Keep one candidate plus one lock probe for pre-lock stalls. After a failure, let the
       // survivors finish without recruiting replacements that could hide the error indefinitely.
-      return failure === undefined && contenders.size < 2 && Date.now() - lastSpawn >= spawnDelay
+      return failure === undefined && contenders.size < 2 && Date.now() - lastSpawn >= nextDelay
     },
     add(contender: ServiceContender) {
       contenders.add(contender)
       lastSpawn = Date.now()
+      nextDelay = nextSpawnDelay()
     },
     releaseAll() {
       contenders.forEach((contender) => contender.release())

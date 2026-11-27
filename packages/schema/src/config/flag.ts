@@ -15,5 +15,24 @@ export const registry = {
   media_blob: "Store new session media once in a deduplicated blob table instead of inline in every message row.",
   schedules: "Enable experimental scheduled tasks that wake a session with a prompt.",
   artifacts: "Enable experimental artifacts backed by pluggable providers.",
+  service_heartbeat:
+    "Enable heartbeat-based confirmation before replacing an unresponsive background service owner.",
+  image_read_tool: "Enable the image_read tool, which reads local images as image media.",
 } as const satisfies Record<string, string>
 export type Key = keyof typeof registry
+
+/**
+ * Resolve a flag from OPENCODE_FLAGS and the build channel for clients that cannot depend on Core's Config.
+ * Explicit entries win over `all`, which wins over the channel default, matching Core's Flag resolver.
+ * Config-file overrides are applied by Core on the server side.
+ */
+export function enabledFromEnv(key: Key, channel: string, overrides = process.env["OPENCODE_FLAGS"]) {
+  const entries = (overrides ?? "")
+    .split(",")
+    .map((item) => item.trim())
+    .filter(Boolean)
+  const explicit = entries.findLast((item) => item === key || item === `-${key}`)
+  if (explicit !== undefined) return !explicit.startsWith("-")
+  if (entries.includes(wildcard)) return true
+  return channel === "local" || channel === "dev"
+}

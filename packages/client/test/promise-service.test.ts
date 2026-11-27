@@ -214,11 +214,12 @@ test("evicts an unresponsive registered service before starting its replacement"
     file: registration,
     version: "test",
     command: fixture.command("delayed", "10"),
+    unresponsiveRecovery: true,
   })
   const replacement = await Bun.file(registration).json()
   fixture.track(replacement.pid)
 
-  expect((await Bun.file(registration + ".requests").text()).trim().split("\n")).toHaveLength(3)
+  expect((await Bun.file(registration + ".requests").text()).trim().split("\n")).toHaveLength(4)
   expect(await existing.exited).toBe(stoppedExitCode)
   expect(replacement.pid).not.toBe(original.pid)
   expect(endpoint.url).toBe(replacement.url)

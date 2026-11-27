@@ -1,7 +1,8 @@
 import { Service, type Endpoint, type EnsureOptions } from "@opencode/client/effect/service"
 import { ClientError, isUnauthorizedError, OpenCode } from "@opencode/client/promise"
 import { OPENCODE_VERSION } from "../version"
-import { Effect, Option, Redacted } from "effect"
+import { Effect, Option, Redacted, Schedule } from "effect"
+import { isIP } from "node:net"
 import { Server as ServerFlag, Standalone as StandaloneFlag } from "../commands/commands"
 import { Env } from "../env"
 import { ServiceConfig } from "./service-config"
@@ -32,16 +33,34 @@ export const resolve = Effect.fn("cli.server-connection.resolve")(function* (arg
   if (server !== undefined && standalone)
     return yield* Effect.fail(new Error("--server and --standalone cannot be combined"))
   if (server !== undefined) {
-    const password = yield* Env.password
+    const environmentPassword = yield* Env.password
+    // An explicit local server may still be the managed one. Reuse the persisted service password
+    // when the environment does not provide one, so `--server http://127.0.0.1:...` does not fail
+    // with "requires a password" just because the caller omitted the variable. Never send that
+    // local secret to a remote host.
+    const password =
+      environmentPassword !== undefined
+        ? Redacted.value(environmentPassword)
+        : isLoopback(server)
+          ? (yield* ServiceConfig.read()).password
+          : undefined
     const endpoint = {
       url: server,
-      auth: password ? { type: "basic" as const, username: "opencode", password: Redacted.value(password) } : undefined,
+      auth: password ? { type: "basic" as const, username: "opencode", password } : undefined,
     } satisfies Endpoint
     const client = OpenCode.make({ baseUrl: endpoint.url, headers: Service.headers(endpoint) })
     const health = yield* Effect.tryPromise({
-      try: () => client.server.info({ signal: AbortSignal.timeout(5_000) }),
-      catch: (cause) => connectError(endpoint, cause),
-    })
+      try: () => client.server.info({ signal: AbortSignal.timeout(10_000) }),
+      catch: (cause) => cause,
+    }).pipe(
+      // A starting service can answer /api/info with 503 and a timeout while it boots. Retry only
+      // those ambiguous outcomes; an unreachable port or a rejected credential should fail now.
+      Effect.retry({
+        while: retryableServerStart,
+        schedule: Schedule.spaced("1 second").pipe(Schedule.upTo({ duration: 30_000 })),
+      }),
+      Effect.mapError((cause) => connectError(endpoint, cause)),
+    )
     if (health.version !== OPENCODE_VERSION)
       process.stderr.write(
         `Warning: Server at ${endpoint.url} has version ${health.version}; this client is ${OPENCODE_VERSION}. Continuing anyway.\n`,
@@ -97,6 +116,34 @@ const resolveManaged = Effect.fnUntraced(function* (options: EnsureOptions, mism
     return yield* Effect.fail(new Error("Background server version does not match this client"))
   return yield* Service.ensure(options)
 })
+
+function isLoopback(server: string) {
+  const hostname = URL.parse(server)?.hostname.toLowerCase()
+  if (hostname === undefined) return false
+  if (hostname === "localhost" || hostname === "::1" || hostname === "[::1]") return true
+  return isIP(hostname) === 4 && hostname.startsWith("127.")
+}
+
+function retryableServerStart(cause: unknown) {
+  if (isUnauthorizedError(cause)) return false
+  if (cause instanceof ClientError) {
+    if (cause.reason === "UnexpectedStatus") return statusOf(cause.cause) === 503
+    if (cause.reason === "Transport") return isTimeout(cause.cause)
+    return false
+  }
+  return isTimeout(cause)
+}
+
+function statusOf(value: unknown) {
+  if (typeof value !== "object" || value === null || !("status" in value)) return undefined
+  return typeof value.status === "number" ? value.status : undefined
+}
+
+function isTimeout(value: unknown, depth = 0): boolean {
+  if (depth > 4 || typeof value !== "object" || value === null) return false
+  if ("name" in value && (value.name === "TimeoutError" || value.name === "AbortError")) return true
+  return "cause" in value && isTimeout(value.cause, depth + 1)
+}
 
 function connectError(endpoint: Endpoint, cause: unknown) {
   if (isUnauthorizedError(cause)) {

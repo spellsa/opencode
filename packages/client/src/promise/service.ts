@@ -4,7 +4,15 @@ import { contenderPool, spawnServiceContender } from "../service-contender.js"
 import { defaultEnsureTiming, ensureTiming, type EnsureTiming } from "../service-timing.js"
 import { matchesVersion } from "../service-version.js"
 import { PtyHandoff } from "../pty-handoff.js"
-import { decide, fallback, headers, probeResult, same } from "../service-probe.js"
+import {
+  decide,
+  fallback,
+  headers,
+  probeResult,
+  same,
+  shouldTerminateUnresponsive,
+  warnSlowOwnerOnce,
+} from "../service-probe.js"
 
 export * from "../service.js"
 export { fallback, headers }
@@ -31,6 +39,7 @@ export async function ensure(options: EnsureOptions = {}): Promise<Endpoint> {
   const pool = contenderPool(timing)
   let timeouts: { readonly info: Info; readonly count: number } | undefined
   let announced = false
+  const recovery = options.unresponsiveRecovery === true
 
   const announce = (reason: "missing" | "version-mismatch", previousVersion?: string) => {
     if (announced) return
@@ -52,19 +61,41 @@ export async function ensure(options: EnsureOptions = {}): Promise<Endpoint> {
       if (Date.now() >= deadline)
         throw pool.failure() ?? new Error("Timed out waiting for the background service to start")
       const registration = await registered(options.file, timing.requestTimeout)
+      // With recovery enabled, a timed-out probe is not proof of death: do not race contenders
+      // against a port a slow owner still holds until its process or heartbeat proves it dead.
+      let slowOwner = false
       if (registration.timedOut && registration.info !== undefined) {
         timeouts = {
           info: registration.info,
           count: timeouts !== undefined && same(timeouts.info, registration.info) ? timeouts.count + 1 : 1,
         }
-        if (timeouts.count >= 3) {
-          announce("missing")
-          console.warn("Background service is unresponsive; recovery cannot preserve persistent terminals")
-          await PtyHandoff.clear(options.file ?? fallback())
-          await terminate(registration.info, options, timing)
-          pool.evict(registration.info.pid)
-          pool.recruitNow()
-          timeouts = undefined
+        slowOwner = recovery
+        if (timeouts.count >= (recovery ? timing.unresponsiveAttempts : 3)) {
+          const confirmTerminate =
+            !recovery || (await shouldTerminateUnresponsive(registration.info, timing))
+          if (confirmTerminate) {
+            announce("missing")
+            console.warn("Background service is unresponsive; recovery cannot preserve persistent terminals", {
+              servicePID: registration.info.pid,
+              timeouts: timeouts.count,
+              heartbeatAgeMs:
+                registration.info.heartbeat === undefined ? undefined : Date.now() - registration.info.heartbeat,
+            })
+            await PtyHandoff.clear(options.file ?? fallback())
+            await terminate(registration.info, options, timing)
+            pool.evict(registration.info.pid)
+            pool.recruitNow()
+            slowOwner = false
+            timeouts = undefined
+          } else {
+            if (warnSlowOwnerOnce(options.file ?? fallback()))
+              console.warn("Background service is slow but still alive; keeping it", {
+                servicePID: registration.info.pid,
+                heartbeatAgeMs:
+                  registration.info.heartbeat === undefined ? undefined : Date.now() - registration.info.heartbeat,
+              })
+            timeouts = undefined
+          }
         }
       } else timeouts = undefined
 
@@ -87,7 +118,7 @@ export async function ensure(options: EnsureOptions = {}): Promise<Endpoint> {
       } else {
         const failed = pool.reap()
         if (failed !== undefined) throw failed
-        if (pool.shouldRecruit(registration.info !== undefined)) {
+        if (!slowOwner && pool.shouldRecruit(registration.info !== undefined)) {
           announce("missing")
           pool.add(await spawnContender())
         }

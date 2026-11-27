@@ -2,6 +2,8 @@ import { beforeEach, describe, expect } from "bun:test"
 import path from "path"
 import { Effect, Exit, Layer, Result } from "effect"
 import { Config } from "@opencode/core/config"
+import { Flag } from "@opencode/core/flag"
+import { App } from "@opencode/core/app"
 import { AppNodeBuilder } from "@opencode/core/effect/app-node-builder"
 import { LayerNode } from "@opencode/util/effect/layer-node"
 import { FileSystem } from "@opencode/core/filesystem"
@@ -25,10 +27,17 @@ import { testEffect } from "./lib/effect"
 import { permissionLayer } from "./lib/permission"
 import { toolIdentity, executeTool, registerToolPlugin, toolDefinitions } from "./lib/tool"
 
-const readToolNode = makeLocationNode({
+const flagNode = (overrides: string) =>
+  LayerNode.make({
+    name: "test/read-tool-flag",
+    layer: Layer.mergeAll(App.layer({ channel: "local" }), Layer.succeed(Flag.Overrides, overrides)),
+    deps: [],
+  })
+const readToolNode = (overrides: string) => makeLocationNode({
   name: "test/read-tool-plugin",
   layer: Layer.effectDiscard(registerToolPlugin(ReadTool.Plugin)),
   deps: [
+    flagNode(overrides),
     Tool.node,
     ReadToolFileSystem.node,
     FileAccess.node,
@@ -108,9 +117,9 @@ const locationLayer = Layer.succeed(
 const unavailableImage = Layer.mock(Image.Service, {
   normalize: () => Effect.fail(new Image.ResizerUnavailableError()),
 })
-const readLayer = (imageLayer: Layer.Layer<Image.Service>) =>
+const readLayer = (imageLayer: Layer.Layer<Image.Service>, overrides = "image_read_tool") =>
   Layer.mergeAll(
-    AppNodeBuilder.build(LayerNode.group([Tool.node, readToolNode, Skill.node]), [
+    AppNodeBuilder.build(LayerNode.group([Tool.node, readToolNode(overrides), Skill.node]), [
       ReadToolFileSystem.node.replace(reader),
       Permission.node.replace(permission),
       Config.node.replace(config),
@@ -122,8 +131,9 @@ const readLayer = (imageLayer: Layer.Layer<Image.Service>) =>
     config,
     imageLayer,
   )
-const it = testEffect(readLayer(imageLayer))
-const itWithoutResizer = testEffect(readLayer(unavailableImage))
+const it = testEffect(readLayer(imageLayer, "image_read_tool"))
+const itWithoutResizer = testEffect(readLayer(unavailableImage, "image_read_tool"))
+const itNoImageRead = testEffect(readLayer(imageLayer, "-image_read_tool"))
 const sessionID = Session.ID.make("ses_read_tool_test")
 
 describe("ReadTool", () => {
@@ -152,7 +162,7 @@ describe("ReadTool", () => {
     Effect.gen(function* () {
       const registry = yield* Tool.Service
 
-      expect((yield* toolDefinitions(registry)).map((tool) => tool.name)).toEqual(["read", "execute"])
+      expect((yield* toolDefinitions(registry)).map((tool) => tool.name)).toEqual(["image_read", "read", "execute"])
       expect(
         (yield* toolDefinitions(registry, [{ action: "read", resource: "*", effect: "deny" }])).map(
           (tool) => tool.name,
@@ -182,6 +192,58 @@ describe("ReadTool", () => {
         },
       ])
       expect(listCalls).toEqual([])
+    }),
+  )
+
+  itNoImageRead.effect("does not register image_read when its flag is disabled", () =>
+    Effect.gen(function* () {
+      const registry = yield* Tool.Service
+      expect((yield* toolDefinitions(registry)).map((tool) => tool.name)).toEqual(["read", "execute"])
+    }),
+  )
+
+  it.effect("image_read returns image media but rejects text and PDFs", () =>
+    Effect.gen(function* () {
+      const registry = yield* Tool.Service
+      const png = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII="
+      readResult = {
+        type: "file",
+        uri: "file:///pixel.png",
+        name: "pixel.png",
+        content: png,
+        encoding: "base64",
+        mime: "image/png",
+      }
+      const image = yield* executeTool(registry, {
+        sessionID,
+        ...toolIdentity,
+        call: { type: "tool-call", id: "call-image-read", name: "image_read", input: { path: "pixel.png" } },
+      })
+      expect(image.status).toBe("completed")
+      if (image.status !== "completed") return
+      expect(image.content).toContainEqual({
+        type: "file",
+        uri: `data:image/png;base64,${png}`,
+        mime: "image/png",
+        name: "pixel.png",
+      })
+      expect(assertions).toMatchObject([{ action: "read", resources: ["pixel.png"] }])
+      for (const mime of ["text/plain", "application/pdf", "image/svg+xml"]) {
+        readResult = {
+          type: "file",
+          uri: "file:///other",
+          name: "other",
+          content: "hello",
+          encoding: mime === "text/plain" ? "utf8" : "base64",
+          mime,
+        }
+        const result = yield* executeTool(registry, {
+          sessionID,
+          ...toolIdentity,
+          call: { type: "tool-call", id: `call-${mime}`, name: "image_read", input: { path: "other" } },
+        })
+        expect(result.status).toBe("error")
+      }
     }),
   )
 
