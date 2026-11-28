@@ -7,6 +7,7 @@ import { Config } from "../../config"
 import { Context, Effect, FileSystem, Option, Queue, Schedule, Semaphore } from "effect"
 import { ServerConnection } from "../../services/server-connection"
 import { Updater } from "../../services/updater"
+import { PreviewUpdater } from "../../services/preview-updater"
 import { UpdatePreflight } from "../../services/update-preflight"
 import { Npm } from "@opencode/util/npm"
 import { OPENCODE_ARTIFACT, OPENCODE_CHANNEL, OPENCODE_HIGHLIGHTS, OPENCODE_VERSION } from "../../version"
@@ -81,7 +82,8 @@ export default Runtime.handler(Commands, (input) =>
           }),
         ),
         checking.withPermits(1),
-        Effect.repeat(Schedule.spaced("10 minutes")),
+        // GitHub's unauthenticated release API has a low rate limit; preview builds poll less often.
+        Effect.repeat(Schedule.spaced(PreviewUpdater.applicable ? "1 hour" : "10 minutes")),
         Effect.forkScoped({ startImmediately: true }),
       )
     preflight.loading()

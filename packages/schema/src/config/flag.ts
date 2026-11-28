@@ -18,6 +18,7 @@ export const registry = {
   service_heartbeat:
     "Enable heartbeat-based confirmation before replacing an unresponsive background service owner.",
   image_read_tool: "Enable the image_read tool, which reads local images as image media.",
+  opencode2_autoupdate: "Automatically update standalone OpenCode2 preview builds from new preview releases.",
 } as const satisfies Record<string, string>
 export type Key = keyof typeof registry
 
