@@ -36,11 +36,15 @@ jobs:
         run: bun run script/build.ts --single --skip-install
       - name: Archive binary
         shell: bash
-        run: tar -czf opencode2-${{ matrix.name }}.tar.gz -C packages/cli/dist .
+        run: |
+          tar -czf opencode2-${{ matrix.name }}.tar.gz -C packages/cli/dist .
+          node -e "const fs=require('fs'),c=require('crypto');const f=process.argv[1];fs.writeFileSync(f+'.sha256',c.createHash('sha256').update(fs.readFileSync(f)).digest('hex')+'  '+f+'\n')" opencode2-${{ matrix.name }}.tar.gz
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: opencode2-${{ matrix.name }}
-          path: opencode2-${{ matrix.name }}.tar.gz
+          path: |
+            opencode2-${{ matrix.name }}.tar.gz
+            opencode2-${{ matrix.name }}.tar.gz.sha256
           if-no-files-found: error
 
   release:

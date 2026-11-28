@@ -3,6 +3,7 @@ import { Effect, Option } from "effect"
 import { Commands } from "../commands"
 import { Runtime } from "../../framework/runtime"
 import { Updater } from "../../services/updater"
+import { PreviewUpdater } from "../../services/preview-updater"
 import { handlePromptErrors } from "../../ui/prompt"
 import { OPENCODE_VERSION } from "../../version"
 import { stripVTControlCharacters } from "node:util"
@@ -19,7 +20,7 @@ export default Runtime.handler(
           new Error("Could not detect the installation method. Pass --method to choose how to upgrade OpenCode."),
         )
 
-      log.info(`Using method: ${method}`)
+      log.info(PreviewUpdater.applicable ? "Using method: preview archive" : `Using method: ${method}`)
       const target = Option.getOrUndefined(input.target) ?? (yield* updater.latest(method))
       const version = target.trim().replace(/^v/, "")
       if (version === OPENCODE_VERSION) {
